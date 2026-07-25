@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "asas-lookups"
+version = "0.1.0.dev0"
+description = "Asas reference-data / lookups module: generic bilingual lookup types, values, translations and aliases with a FastAPI read + admin API."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "LicenseRef-Proprietary"
+dependencies = [
+    "fastapi>=0.110,<1",
+    "sqlmodel>=0.0.16",
+    "alembic>=1.13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "psycopg2-binary>=2.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/asas_lookups"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

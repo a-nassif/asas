@@ -1,0 +1,54 @@
+# Per-package test matrix on BOTH database engines (the Asas dual-engine rule,
+# inherited from Teamy — see DR 0017). Add new packages to matrix.package.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: ${{ matrix.package }} (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [asas-lookups]
+        engine: [sqlite, postgres]
+
+    services:
+      # Started for both matrix legs; the sqlite leg simply never connects to it.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: asas
+          POSTGRES_PASSWORD: asas
+          POSTGRES_DB: asas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U asas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: packages/${{ matrix.package }}/pyproject.toml
+
+      - name: Install package
+        working-directory: packages/${{ matrix.package }}
+        run: pip install -e '.[dev]'
+
+      - name: Run tests
+        working-directory: packages/${{ matrix.package }}
+        env:
+          TEST_DATABASE_URL: ${{ matrix.engine == 'postgres' && 'postgresql+psycopg2://asas:asas@localhost:5432/asas_test' || '' }}
+        run: pytest -q
