@@ -11,7 +11,7 @@ repo (DR 0017, epic TEAMY-466).
 
 | Package | Import root | Status |
 | --- | --- | --- |
-| `asas-lookups` | `asas_lookups` | scaffolded — extraction pending (pilot) |
+| `asas-lookups` | `asas_lookups` | v0.1.0 — extracted (Teamy DR 0017 pilot) |
 
 Planned, in extraction order: `asas-validation`, `asas-storage`, `asas-ratelimit`, `asas-jobs`,
 `asas-access`, `asas-workflow`, `asas-notifications`, `asas-search`, `asas-mcp`.

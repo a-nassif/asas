@@ -1,15 +1,33 @@
 """Asas lookups — generic bilingual reference-data engine.
 
-Extraction of Teamy's ``app/lookups`` package (pilot of DR 0017, epic TEAMY-466).
-Public surface follows the Asas host contract:
+A four-table core (type registry → value → translation, plus alias) that scales to
+many lookup types without a table per type: stable codes in consuming records,
+labels as translations, aliases for search, per-org value overlays on top of
+platform seeds. Extracted from Teamy (DR 0017 pilot, epic TEAMY-466).
 
-- ``build_routers(get_session)`` — read + admin ``APIRouter``s (host applies auth guards)
-- ``configure_org_resolver(fn)`` — optional multi-tenancy hook (default: single-tenant)
-- ``seed(session)`` — idempotent reference-data seeding
-- ``migrate(engine)`` — package-owned Alembic chain, adopt-or-create
-- service functions taking an explicit ``Session``
+Public surface — the Asas host contract:
 
-The implementation lands with the pilot extraction; this skeleton pins the layout and CI.
+- :func:`build_routers` — read + admin ``APIRouter``s built against the host's
+  session dependency; the host applies its own auth guards when including them.
+- :func:`configure_org_resolver` — optional multi-tenancy hook (how to read the
+  acting org off a session). Unconfigured ⇒ single-tenant: global rows only.
+- :func:`seed` — idempotent starter reference data; call at boot after ``migrate``.
+- :func:`migrate` — package-owned Alembic chain, adopt-or-create; call at boot.
+- ``service`` — query/resolve/admin functions taking an explicit ``Session``.
 """
 
-__version__ = "0.1.0.dev0"
+from .migrate import migrate
+from .router import Routers, build_routers
+from .seed import seed_lookups as seed
+from .service import configure_org_resolver
+
+__version__ = "0.1.0"
+
+__all__ = [
+    "Routers",
+    "build_routers",
+    "configure_org_resolver",
+    "migrate",
+    "seed",
+    "__version__",
+]
