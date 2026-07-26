@@ -27,8 +27,12 @@ def _serialize(rules: list[Rule]) -> list[dict]:
 
 
 def _etag() -> str:
+    # Weak ETag (W/"…") on purpose: compression proxies (e.g. Render's edge) downgrade
+    # strong ETags to weak on gzipped responses, so a strong tag never round-trips —
+    # the client echoes W/"…" and revalidation always misses. Emitting the weak form
+    # makes the round trip exact (the lookups module's ETag convention).
     blob = json.dumps(_serialize(list(declared_rules())), sort_keys=True)
-    return '"' + hashlib.md5(blob.encode()).hexdigest() + '"'
+    return 'W/"' + hashlib.md5(blob.encode()).hexdigest() + '"'
 
 
 def build_router() -> APIRouter:

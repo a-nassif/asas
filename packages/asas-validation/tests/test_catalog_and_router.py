@@ -70,6 +70,8 @@ def test_rules_endpoint_serves_declared_set_with_etag():
     assert [r["code"] for r in only_m] == ["m.dob_future"]
 
     etag = resp.headers["ETag"]
+    # weak form (W/"…") so gzip proxies that downgrade strong ETags can't break revalidation
+    assert etag.startswith('W/"')
     assert client.get("/validation/rules", headers={"If-None-Match": etag}).status_code == 304
 
     # a different declared set must produce a different ETag (no stale 304s across deploys)

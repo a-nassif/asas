@@ -21,7 +21,7 @@ from .router import Routers, build_routers
 from .seed import seed_lookups as seed
 from .service import configure_org_resolver
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "Routers",
