@@ -3,24 +3,25 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "asas-validation"
+name = "asas-jobs"
 version = "0.5.0"
-description = "Asas validation module: declarative temporal/cross-field rules evaluated on both create and update, with a FastAPI endpoint serving the rule set so clients enforce the same constraints."
+description = "Asas background-jobs module: a durable DB-backed job queue and interval scheduler with CAS claims, lease-based crash recovery, retry backoff with dead-lettering, and a package-owned Alembic chain."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "LicenseRef-Proprietary"
 dependencies = [
-    "fastapi>=0.110,<1",
+    "sqlmodel>=0.0.21",
+    "alembic>=1.13",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
-    "httpx>=0.27",
+    "psycopg2-binary>=2.9",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/asas_validation"]
+packages = ["src/asas_jobs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
