@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [asas-lookups, asas-validation]
+        package: [asas-lookups, asas-validation, asas-storage]
         engine: [sqlite, postgres]
 
     services:

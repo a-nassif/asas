@@ -3,24 +3,24 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "asas-validation"
+name = "asas-storage"
 version = "0.3.0"
-description = "Asas validation module: declarative temporal/cross-field rules evaluated on both create and update, with a FastAPI endpoint serving the rule set so clients enforce the same constraints."
+description = "Asas storage module: a pluggable file/object storage seam with on-disk and S3-compatible backends behind one traversal-safe contract."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "LicenseRef-Proprietary"
-dependencies = [
-    "fastapi>=0.110,<1",
-]
+dependencies = []
 
 [project.optional-dependencies]
+s3 = ["boto3>=1.34"]
 dev = [
     "pytest>=8",
-    "httpx>=0.27",
+    "moto[s3]>=5.0",
+    "boto3>=1.34",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/asas_validation"]
+packages = ["src/asas_storage"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
