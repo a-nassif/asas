@@ -1,0 +1,165 @@
+"""Asas rate limiting — in-process token buckets with host-declared rules.
+
+The host declares named ``Rule``s at boot (its own catalog, posture profiles,
+and override reading stay host-side) and calls ``check(rule, key)`` on the hot
+path — it either passes or raises a FastAPI-native 429 with ``Retry-After``.
+Extracted from Teamy (anti-abuse TEAMY-334; extraction epic TEAMY-466, design
+record 0017).
+
+Deliberately no Redis and no DB writes: a single-instance deployment gets
+exact limits from process memory; a scaled-out one gets per-instance limits
+(N× looser). The seam lets a shared backend replace the bucket store later
+without touching call sites.
+
+Public surface — the Asas host contract (table-less **and** router-less
+variant: no session dependency, no ``seed``/``migrate``/``build_routers``):
+
+- :class:`Rule` / :func:`declare` / :func:`rules` — the host's named rules.
+- :func:`configure` — kill switch + injectable clock (tests).
+- :func:`check` — consume one token or raise 429 with ``Retry-After``.
+- :func:`allow` — the non-raising form: ``(allowed, retry_after_seconds)``.
+- :func:`parse_overrides` — parse a ``"rule=count/window,…"`` deployment
+  override string (malformed entries are logged and skipped).
+- :func:`reset` / :func:`clear_counters` — test isolation hooks.
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+import threading
+import time
+from dataclasses import dataclass
+from typing import Callable, Dict, Optional, Tuple
+
+from fastapi import HTTPException
+
+__version__ = "0.4.0"
+
+__all__ = [
+    "Rule",
+    "allow",
+    "check",
+    "clear_counters",
+    "configure",
+    "declare",
+    "parse_overrides",
+    "reset",
+    "rules",
+    "__version__",
+]
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Rule:
+    """``limit`` tokens per ``window_seconds``, with bucket capacity ``burst``
+    (defaults to ``limit`` — i.e. the full window may be spent at once)."""
+
+    name: str
+    limit: int
+    window_seconds: float
+    burst: Optional[int] = None
+
+    @property
+    def capacity(self) -> int:
+        return self.burst if self.burst is not None else self.limit
+
+    @property
+    def refill_per_second(self) -> float:
+        return self.limit / self.window_seconds
+
+
+# Bounded guard against unbounded key growth (an attacker cycling emails/IPs):
+# when exceeded, full-and-stale buckets are dropped (they're equivalent to
+# absent buckets anyway).
+_MAX_BUCKETS = 50_000
+
+_lock = threading.Lock()
+_rules: Dict[str, Rule] = {}
+_buckets: Dict[Tuple[str, str], Tuple[float, float]] = {}  # (tokens, stamp)
+_enabled = True
+_clock: Callable[[], float] = time.monotonic
+
+
+def configure(*, enabled: bool = True, clock: Callable[[], float] = time.monotonic) -> None:
+    global _enabled, _clock
+    _enabled = enabled
+    _clock = clock
+
+
+def declare(rule: Rule) -> None:
+    _rules[rule.name] = rule
+
+
+def rules() -> Dict[str, Rule]:
+    return dict(_rules)
+
+
+def reset() -> None:
+    """Drop all counters and rules (tests)."""
+    with _lock:
+        _buckets.clear()
+        _rules.clear()
+
+
+def clear_counters() -> None:
+    """Drop counters but keep the declared rules (per-test isolation)."""
+    with _lock:
+        _buckets.clear()
+
+
+def parse_overrides(raw: str) -> Dict[str, Tuple[int, float]]:
+    """``"rule=count/window,rule2=count/window"`` — malformed entries are
+    logged and skipped (a bad env var must not take the API down)."""
+    overrides: Dict[str, Tuple[int, float]] = {}
+    for part in filter(None, (p.strip() for p in raw.split(","))):
+        try:
+            name, spec = part.split("=", 1)
+            count, window = spec.split("/", 1)
+            overrides[name.strip()] = (int(count), float(window))
+        except ValueError:
+            log.warning("rate-limit override entry %r is malformed; ignored", part)
+    return overrides
+
+
+def _prune_locked(now: float) -> None:
+    if len(_buckets) <= _MAX_BUCKETS:
+        return
+    for bkey in list(_buckets):
+        rule = _rules.get(bkey[0])
+        tokens, stamp = _buckets[bkey]
+        if rule is None or now - stamp > rule.window_seconds:
+            del _buckets[bkey]
+
+
+def allow(rule_name: str, key: str) -> Tuple[bool, float]:
+    """(allowed, retry_after_seconds). Unknown rules and disabled mode allow —
+    a typo'd name must never lock an endpoint (assert names at boot)."""
+    if not _enabled:
+        return True, 0.0
+    rule = _rules.get(rule_name)
+    if rule is None:
+        return True, 0.0
+    now = _clock()
+    with _lock:
+        tokens, stamp = _buckets.get((rule_name, key), (float(rule.capacity), now))
+        tokens = min(float(rule.capacity), tokens + (now - stamp) * rule.refill_per_second)
+        if tokens >= 1.0:
+            _buckets[(rule_name, key)] = (tokens - 1.0, now)
+            _prune_locked(now)
+            return True, 0.0
+        _buckets[(rule_name, key)] = (tokens, now)
+        return False, (1.0 - tokens) / rule.refill_per_second
+
+
+def check(rule_name: str, key: str) -> None:
+    """Consume one token or raise 429 with a Retry-After header."""
+    allowed, retry_after = allow(rule_name, key)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests — try again later.",
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )

@@ -11,11 +11,12 @@ repo (DR 0017, epic TEAMY-466).
 
 | Package | Import root | Status |
 | --- | --- | --- |
-| `asas-lookups` | `asas_lookups` | v0.3.0 — extracted (Teamy DR 0017 pilot) |
-| `asas-validation` | `asas_validation` | v0.3.0 — extracted (table-less contract variant) |
-| `asas-storage` | `asas_storage` | v0.3.0 — extracted (table-less, router-less variant) |
+| `asas-lookups` | `asas_lookups` | v0.4.0 — extracted (Teamy DR 0017 pilot) |
+| `asas-validation` | `asas_validation` | v0.4.0 — extracted (table-less contract variant) |
+| `asas-storage` | `asas_storage` | v0.4.0 — extracted (table-less, router-less variant) |
+| `asas-ratelimit` | `asas_ratelimit` | v0.4.0 — extracted (table-less, router-less variant) |
 
-Planned, in extraction order: `asas-ratelimit`, `asas-jobs`,
+Planned, in extraction order: `asas-jobs`,
 `asas-access`, `asas-workflow`, `asas-notifications`, `asas-search`, `asas-mcp`.
 
 ## The host contract
