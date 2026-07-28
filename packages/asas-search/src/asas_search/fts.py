@@ -1,0 +1,183 @@
+"""Postgres deep-content search (Phase 2, WXL-150; design in Teamy DR 0006).
+
+Ranked full-text search over long prose (experience descriptions, CV text, project
+registers) via one side table, ``search_document``:
+
+- **Postgres-tier only.** The table is created by a hand-written, dialect-branched
+  Alembic migration (no-op on SQLite); ``alembic/env.py`` excludes it from
+  autogenerate. Every function here is raw SQL and must only run against Postgres —
+  callers guard with :func:`is_postgres`.
+- **Self-contained.** Like the rest of the package, this module never imports app
+  models. App code (``search_wiring``) supplies *extractors* (how to turn its rows
+  into :class:`IndexDoc`) and *resolvers* (how to turn matched entity ids back into
+  titles/urls, applying visibility), and keeps the index fresh via ORM events.
+- **Never index restricted fields**: the index is a write-time copy, so redaction
+  cannot be applied at query time — extractors must only feed text every viewer of
+  the record may read.
+- Bilingual: the tsvector combines the ``english`` and ``arabic`` configurations, and
+  queries OR both interpretations, so either language matches with stemming.
+"""
+
+from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Tuple
+
+from sqlalchemy import text
+
+from . import semantic
+from .engine import TIER_CONTENT, Provider, SearchHit
+
+
+class IndexDoc(NamedTuple):
+    entity_type: str  # owning record the hit navigates to ("member" | "project")
+    entity_id: int
+    source: str  # corpus name, e.g. "experience", "cv", "risk"
+    source_id: int  # source row id — the upsert/delete key
+    content: str  # the indexed prose
+    context: str  # human label shown with the snippet, e.g. "via risk: Outage"
+    # Owning org (WXL-238): a write-time copy like the content itself — extractors
+    # fill it from the owning entity; queries filter on the caller's org.
+    org_id: Optional[int] = None
+
+
+# source -> extractor yielding every IndexDoc of that corpus (used by rebuild()).
+_EXTRACTORS: Dict[str, Callable[[Any], Iterable[IndexDoc]]] = {}
+
+# (title, subtitle, url_path) per visible entity id; ids the viewer may not see are
+# simply omitted by the resolver.
+Resolver = Callable[[Any, Any, List[int]], Dict[int, Tuple[str, Optional[str], str]]]
+
+
+def register_extractor(source: str, fn: Callable[[Any], Iterable[IndexDoc]]) -> None:
+    _EXTRACTORS[source] = fn
+
+
+def is_postgres(bind: Any) -> bool:
+    return bind.dialect.name == "postgresql"
+
+
+# tsv is computed on write (not a generated column) so the expression can evolve
+# without DDL; rebuild() re-derives everything.
+_INSERT = text(
+    """
+    INSERT INTO search_document
+        (entity_type, entity_id, source, source_id, content, context, org_id, tsv)
+    VALUES
+        (:entity_type, :entity_id, :source, :source_id, :content, :context, :org_id,
+         to_tsvector('english', :content) || to_tsvector('arabic', :content))
+    """
+)
+_DELETE = text("DELETE FROM search_document WHERE source = :source AND source_id = :source_id")
+
+_QUERY = text(
+    """
+    SELECT DISTINCT ON (entity_id)
+           entity_id,
+           context,
+           ts_rank(tsv, query) AS score,
+           ts_headline('simple', content, query,
+                       'MaxWords=16, MinWords=6, MaxFragments=1') AS snippet
+    FROM search_document,
+         (SELECT websearch_to_tsquery('english', :q)
+                 || websearch_to_tsquery('arabic', :q) AS query) params
+    WHERE entity_type = :entity_type AND org_id = :org_id AND tsv @@ query
+    ORDER BY entity_id, score DESC
+    """
+)
+
+
+def upsert(conn: Any, doc: IndexDoc) -> None:
+    """Replace the index row for (source, source_id). Empty content = plain delete."""
+    conn.execute(_DELETE, {"source": doc.source, "source_id": doc.source_id})
+    if (doc.content or "").strip():
+        conn.execute(_INSERT, doc._asdict())
+
+
+def delete(conn: Any, source: str, source_id: int) -> None:
+    conn.execute(_DELETE, {"source": source, "source_id": source_id})
+
+
+def count(session: Any) -> int:
+    return session.execute(text("SELECT COUNT(*) FROM search_document")).scalar()
+
+
+def rebuild(session: Any) -> int:
+    """Drop and re-derive the whole index from the registered extractors — the
+    one-time backfill and the drift safety net. Returns the number of docs."""
+    session.execute(text("DELETE FROM search_document"))
+    total = 0
+    for extractor in _EXTRACTORS.values():
+        for doc in extractor(session):
+            upsert(session, doc)
+            total += 1
+    return total
+
+
+# Standard RRF constant: dampens the head so a hit found by BOTH arms outranks a
+# top hit found by only one.
+_RRF_K = 60
+
+
+def make_provider(
+    entity_type: str, resolver: Resolver, org_of: Callable[[Any, Any], Optional[int]]
+) -> Provider:
+    """A deep-content search provider for one entity type: lexical FTS + (when an
+    embedding provider is configured, Phase 3) semantic KNN, fused with Reciprocal
+    Rank Fusion. Merged with the Phase 1 structured provider by the engine (per-id
+    dedup; content hits rank last-tier but carry fusion scores, and snippets when
+    the lexical arm matched).
+
+    ``org_of(session, user)`` supplies the caller's org (WXL-238) — the package
+    stays model-free; app wiring reads its tenant context. No org ⇒ no deep hits
+    (fail closed)."""
+
+    def _provider(session, user, q, lang, limit) -> List[SearchHit]:
+        if not is_postgres(session.get_bind()):
+            return []
+        org_id = org_of(session, user)
+        if org_id is None:
+            return []  # no org context — never search across tenants
+        pool = max(limit * 2, limit)
+        lexical = session.execute(
+            _QUERY, {"q": q, "entity_type": entity_type, "org_id": org_id}
+        ).all()
+        lexical = sorted(lexical, key=lambda r: -r.score)[:pool]
+        semantic_rows = semantic.knn(session, entity_type, q, pool, org_id)
+
+        # RRF merge: score = Σ 1/(k + rank) over the arms that found the entity.
+        scores: Dict[int, float] = {}
+        # Lexical metadata wins: it carries the ts_headline snippet.
+        meta: Dict[int, Tuple[str, Optional[str]]] = {}
+        for rank, row in enumerate(lexical):
+            scores[row.entity_id] = scores.get(row.entity_id, 0.0) + 1 / (_RRF_K + rank)
+            meta.setdefault(row.entity_id, (row.context, row.snippet))
+        for rank, row in enumerate(semantic_rows):
+            scores[row.entity_id] = scores.get(row.entity_id, 0.0) + 1 / (_RRF_K + rank)
+            meta.setdefault(row.entity_id, (row.context, None))
+
+        ranked = sorted(scores, key=lambda eid: -scores[eid])[:pool]
+        info = resolver(session, user, ranked)
+        hits: List[SearchHit] = []
+        for entity_id in ranked:
+            if entity_id not in info:  # not visible to this viewer
+                continue
+            title, subtitle, url_path = info[entity_id]
+            context, snippet = meta[entity_id]
+            if snippet:
+                snippet = snippet.replace("<b>", "").replace("</b>", "")
+                match_context = f"{context} — “…{snippet}…”"
+            else:  # semantic-only hit: no lexical fragment to quote
+                match_context = context
+            hits.append(
+                SearchHit(
+                    entity_type=entity_type,
+                    id=entity_id,
+                    title=title,
+                    subtitle=subtitle,
+                    match_context=match_context,
+                    url_path=url_path,
+                    rank_tier=TIER_CONTENT,
+                    rank_score=scores[entity_id],
+                )
+            )
+        return hits
+
+    return _provider
