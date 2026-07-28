@@ -1,0 +1,102 @@
+"""Notification rows + the per-channel delivery outbox (WXL-222).
+
+``notification`` IS the in-app delivery (insert = enqueue, read_at = seen);
+``notification_delivery`` exists only for external channels (email now, Slack/Teams
+later) — one row per (notification, channel) the routing policy selects at emit
+time. Enums are plain VARCHARs (``native_enum=False``, dual-engine rule).
+
+``org_id`` follows the tenancy epic's mapping (WXL-218): notifications are tenant
+data — org-scoped in the catalog, stamped from the producing request's context.
+"""
+
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+from sqlalchemy import Column
+from sqlalchemy import Enum as SAEnum
+from sqlmodel import Field, SQLModel
+
+
+# ── enums (stored as plain VARCHAR — native_enum=False) ──────────────────────
+
+
+class Category(str, Enum):
+    """What the notification means for the recipient (drives UI + email subject)."""
+
+    action = "action"
+    info = "info"
+    warning = "warning"
+
+
+class Urgency(str, Enum):
+    """Channel/display policy tier; defaulted from category × reason at registration."""
+
+    low = "low"
+    normal = "normal"
+    high = "high"
+
+
+class Reason(str, Enum):
+    """Why THIS recipient (GitHub participating-vs-watching, generalized)."""
+
+    requested = "requested"
+    participant = "participant"
+    watching = "watching"
+
+
+class DeliveryStatus(str, Enum):
+    pending = "pending"
+    sending = "sending"  # claimed by a dispatch pass (TEAMY-475); stale claims reclaim
+    sent = "sent"
+    failed = "failed"
+    skipped = "skipped"
+
+
+class Notification(SQLModel, table=True):
+    __tablename__ = "notification"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    org_id: int = Field(index=True)  # no host FK — plain int (extraction rule)
+    user_id: int = Field(index=True)  # the recipient (no host FK)
+    kind: str = Field(index=True)  # e.g. "workflow.approval_requested"
+    category: Category = Field(
+        sa_column=Column(SAEnum(Category, native_enum=False), nullable=False)
+    )
+    urgency: Urgency = Field(
+        sa_column=Column(SAEnum(Urgency, native_enum=False), nullable=False)
+    )
+    reason: Reason = Field(
+        sa_column=Column(SAEnum(Reason, native_enum=False), nullable=False)
+    )
+    # Generic subject reference (never an FK — the package is entity-agnostic).
+    entity_type: Optional[str] = None
+    entity_id: Optional[int] = None
+    title: str
+    body: Optional[str] = None
+    link: Optional[str] = None  # frontend deep link, e.g. "/teams/42"
+    read_at: Optional[datetime] = None
+    # Reserved for auto-clearing `action` notifications when the underlying task
+    # completes (deferred behavior; the column is cheap now vs a migration later).
+    resolved_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class NotificationDelivery(SQLModel, table=True):
+    __tablename__ = "notification_delivery"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    notification_id: int = Field(foreign_key="notification.id", index=True)
+    channel: str = Field(index=True)  # "email" now; "slack"/"teams" later
+    status: DeliveryStatus = Field(
+        default=DeliveryStatus.pending,
+        sa_column=Column(
+            SAEnum(DeliveryStatus, native_enum=False), nullable=False, index=True
+        ),
+    )
+    attempts: int = Field(default=0)
+    # When the row was CAS-claimed (status → sending); a claim older than
+    # ``service.STALE_CLAIM_SECONDS`` belongs to a crashed pass and reclaims.
+    claimed_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    last_error: Optional[str] = None
