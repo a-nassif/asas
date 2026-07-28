@@ -27,7 +27,7 @@ from .registry import configure_context_binder, get_handler, register_handler
 from .runner import configure_runner, run_loop, run_once
 from .scheduler import ensure_schedule, tick_schedules
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "BackgroundJob",

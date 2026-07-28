@@ -25,7 +25,7 @@ from .errors import raise_if_invalid, to_http
 from .router import build_router
 from .rules import Rule, declare_rules, declared_rules, rules_for
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "Rule",
