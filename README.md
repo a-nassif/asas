@@ -11,17 +11,18 @@ repo (DR 0017, epic TEAMY-466).
 
 | Package | Import root | Status |
 | --- | --- | --- |
-| `asas-lookups` | `asas_lookups` | v0.9.0 — extracted (Teamy DR 0017 pilot) |
-| `asas-validation` | `asas_validation` | v0.9.0 — extracted (table-less contract variant) |
-| `asas-storage` | `asas_storage` | v0.9.0 — extracted (table-less, router-less variant) |
-| `asas-ratelimit` | `asas_ratelimit` | v0.9.0 — extracted (table-less, router-less variant) |
-| `asas-jobs` | `asas_jobs` | v0.9.0 — extracted (table-owning: package Alembic chain) |
-| `asas-access` | `asas_access` | v0.9.0 — extracted (table-owning: package Alembic chain) |
-| `asas-workflow` | `asas_workflow` | v0.9.0 — extracted (table-owning: package Alembic chain) |
-| `asas-notifications` | `asas_notifications` | v0.9.0 — extracted (table-owning + router variant) |
-| `asas-search` | `asas_search` | v0.9.0 — extracted (dialect-branched chain: PG deep tier) |
+| `asas-lookups` | `asas_lookups` | v0.10.0 — extracted (Teamy DR 0017 pilot) |
+| `asas-validation` | `asas_validation` | v0.10.0 — extracted (table-less contract variant) |
+| `asas-storage` | `asas_storage` | v0.10.0 — extracted (table-less, router-less variant) |
+| `asas-ratelimit` | `asas_ratelimit` | v0.10.0 — extracted (table-less, router-less variant) |
+| `asas-jobs` | `asas_jobs` | v0.10.0 — extracted (table-owning: package Alembic chain) |
+| `asas-access` | `asas_access` | v0.10.0 — extracted (table-owning: package Alembic chain) |
+| `asas-workflow` | `asas_workflow` | v0.10.0 — extracted (table-owning: package Alembic chain) |
+| `asas-notifications` | `asas_notifications` | v0.10.0 — extracted (table-owning + router variant) |
+| `asas-search` | `asas_search` | v0.10.0 — extracted (dialect-branched chain: PG deep tier) |
+| `asas-mcp` | `asas_mcp` | v0.10.0 — extracted (protocol-only variant) |
 
-Planned, in extraction order: `asas-mcp`.
+All ten planned modules are extracted (Teamy epic TEAMY-466, complete 2026-07-29).
 
 ## The host contract
 

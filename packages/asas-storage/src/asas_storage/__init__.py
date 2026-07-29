@@ -30,7 +30,7 @@ from .base import FileStat, Storage, safe_filename, valid_key
 from .local import LocalStorage
 from .s3 import S3Storage
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 __all__ = [
     "FileStat",
