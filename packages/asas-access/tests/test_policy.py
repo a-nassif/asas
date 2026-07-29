@@ -114,3 +114,29 @@ def test_seed_is_idempotent_and_validates_fields(session):
     assert len(rows) == 1
     with pytest.raises(ValueError, match="unknown field"):
         access.seed_field_permissions(session, [("member", "typo", "edit", "admin")])
+
+
+def test_org_scoped_row_does_not_block_platform_default_seed(session):
+    from sqlmodel import select
+
+    access.register_fields("member", ["salary"])
+    # An org customizes the grant before the platform default exists.
+    session.add(
+        FieldPermission(
+            entity_type="member",
+            field="salary",
+            action="edit",
+            principal="people_ops",
+            org_id=2,
+        )
+    )
+    session.commit()
+    access.invalidate_cache()
+    # A later-added platform default for the same key must still seed — the
+    # org-scoped row must not satisfy the existence check.
+    access.seed_field_permissions(session, [("member", "salary", "edit", "people_ops")])
+    rows = session.exec(select(FieldPermission)).all()
+    assert {(r.principal, r.org_id) for r in rows} == {("people_ops", 2), ("people_ops", None)}
+    # And re-seeding stays idempotent against the platform row itself.
+    access.seed_field_permissions(session, [("member", "salary", "edit", "people_ops")])
+    assert len(session.exec(select(FieldPermission)).all()) == 2

@@ -34,6 +34,9 @@ def seed_field_permissions(
                 FieldPermission.field == field,
                 FieldPermission.action == action,
                 FieldPermission.principal == principal,
+                # Only a *platform* row satisfies the check — an org-scoped
+                # override must not block the global default for other orgs.
+                FieldPermission.org_id.is_(None),
             )
         ).first()
         if exists:
@@ -63,6 +66,9 @@ def seed_action_permissions(
             select(ActionPermission).where(
                 ActionPermission.permission == permission,
                 ActionPermission.principal == principal,
+                # Only a *platform* row satisfies the check — an org-scoped
+                # override must not block the global default for other orgs.
+                ActionPermission.org_id.is_(None),
             )
         ).first()
         if exists:

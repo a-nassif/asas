@@ -40,7 +40,7 @@ from .engine import (
 )
 from .migrate import migrate
 
-__version__ = "0.10.0"
+__version__ = "0.10.1"
 
 __all__ = [
     "TIER_BASE_FIELD",

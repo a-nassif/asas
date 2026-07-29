@@ -58,3 +58,20 @@ def test_seed_is_idempotent_and_validates_verbs(session):
     assert len(session.exec(select(ActionPermission)).all()) == 1
     with pytest.raises(ValueError, match="unknown verb"):
         access.seed_action_permissions(session, [("team.typo", "leads")])
+
+
+def test_org_scoped_row_does_not_block_platform_default_seed(session):
+    access.register_actions(["team.create"])
+    # An org customizes the grant before the platform default exists (e.g. via
+    # a groups admin UI writing org-scoped rows).
+    session.add(ActionPermission(permission="team.create", principal="leads", org_id=2))
+    session.commit()
+    access.invalidate_action_cache()
+    # A later-added platform default for the same (verb, principal) must still
+    # seed — the org-scoped row must not satisfy the existence check.
+    access.seed_action_permissions(session, [("team.create", "leads")])
+    rows = session.exec(select(ActionPermission)).all()
+    assert {(r.principal, r.org_id) for r in rows} == {("leads", 2), ("leads", None)}
+    # And re-seeding stays idempotent against the platform row itself.
+    access.seed_action_permissions(session, [("team.create", "leads")])
+    assert len(session.exec(select(ActionPermission)).all()) == 2
