@@ -29,9 +29,11 @@ catalogs). Enforcement on/off is the caller's concern throughout.
 
 from .actions import (
     action_allowed,
+    action_allowed_for,
     granted_principals,
     invalidate_action_cache,
     known_actions,
+    record_scoped_actions,
     register_actions,
 )
 from .catalog import known_fields, register_fields
@@ -64,6 +66,7 @@ from .principals import (
     TEAM_MEMBER,
     held_principals,
     register_global_source,
+    register_record_source,
     register_resolver,
 )
 from .seed import seed_action_permissions, seed_field_permissions
@@ -75,7 +78,7 @@ from .visibility import (
     register_private_viewers,
 )
 
-__version__ = "0.10.1"
+__version__ = "0.11.0"
 
 __all__ = [
     "AccessGroup",
@@ -95,6 +98,7 @@ __all__ = [
     "TEAM_MEMBER",
     "VIEW_PRIVATE",
     "action_allowed",
+    "action_allowed_for",
     "can_edit_field",
     "can_view_field",
     "can_view_record",
@@ -108,11 +112,13 @@ __all__ = [
     "known_actions",
     "known_fields",
     "migrate",
+    "record_scoped_actions",
     "redact_view",
     "register_actions",
     "register_fields",
     "register_global_source",
     "register_private_viewers",
+    "register_record_source",
     "register_resolver",
     "reserve_principals",
     "reserved_principals",

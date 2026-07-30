@@ -72,6 +72,7 @@ _QUERY = text(
     SELECT DISTINCT ON (entity_id)
            entity_id,
            context,
+           source,
            ts_rank(tsv, query) AS score,
            ts_headline('simple', content, query,
                        'MaxWords=16, MinWords=6, MaxFragments=1') AS snippet
@@ -117,7 +118,10 @@ _RRF_K = 60
 
 
 def make_provider(
-    entity_type: str, resolver: Resolver, org_of: Callable[[Any, Any], Optional[int]]
+    entity_type: str,
+    resolver: Resolver,
+    org_of: Callable[[Any, Any], Optional[int]],
+    row_filter: Optional[Callable[[Any, Any, str, int], bool]] = None,
 ) -> Provider:
     """A deep-content search provider for one entity type: lexical FTS + (when an
     embedding provider is configured, Phase 3) semantic KNN, fused with Reciprocal
@@ -139,8 +143,18 @@ def make_provider(
         lexical = session.execute(
             _QUERY, {"q": q, "entity_type": entity_type, "org_id": org_id}
         ).all()
-        lexical = sorted(lexical, key=lambda r: -r.score)[:pool]
+        lexical = sorted(lexical, key=lambda r: -r.score)
         semantic_rows = semantic.knn(session, entity_type, q, pool, org_id)
+        if row_filter is not None:
+            lexical = [
+                r for r in lexical if row_filter(session, user, r.source, r.entity_id)
+            ]
+            semantic_rows = [
+                r
+                for r in semantic_rows
+                if row_filter(session, user, r.source, r.entity_id)
+            ]
+        lexical = lexical[:pool]
 
         # RRF merge: score = Σ 1/(k + rank) over the arms that found the entity.
         scores: Dict[int, float] = {}
