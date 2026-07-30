@@ -492,23 +492,10 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.label,
     )
 
-    # Project roles (TEAMY-291): assignable to project contributors and referenced
-    # by workflow principals (`project_role:<code>`). Open so admins can add roles
-    # via the lookups manager; interim representation (proper entity = TEAMY-295).
-    project_role = _ensure_type(
-        session,
-        key="project_role",
-        name="Project role",
-        description="Roles assignable to project contributors (e.g. change manager).",
-        is_open=True,
-        code_system="internal",
-        default_sort=SortMode.label,
-    )
-    added = sum(
-        _ensure_value(session, project_role.id, code, [("en", en), ("ar", ar)])
-        for code, en, ar in (("change_manager", "Change manager", "مدير التغيير"),)
-    )
-    _bump_version_if(session, project_role, added)
+    # Project roles were an open lookup type here from TEAMY-291 until TEAMY-487
+    # promoted them to a first-class `project_role` entity in the host (Teamy) —
+    # the seed is retired; hosts adopt any surviving lookup values into their own
+    # catalog at boot (idempotent) and this library never re-creates the type.
 
     # --- Countries & nationalities (alphabetical, ISO codes) ---
     country = _ensure_type(
