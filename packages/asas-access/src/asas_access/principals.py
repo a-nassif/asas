@@ -34,6 +34,15 @@ _RESOLVERS: dict[tuple[str, str], Resolver] = {}
 GlobalSource = Callable[[Any, Any], set]
 _GLOBAL_SOURCES: list[GlobalSource] = []
 
+# entity_type -> [fn(user, record, session) -> set[str]]: the fourth source
+# (TEAMY-486) — namespaced principals held w.r.t. one record, where the *set*
+# of possible principals is data, not code (e.g. ``project_role:<key>`` for each
+# project role the user holds on the record's project). A boolean resolver
+# answers one fixed principal; a record source returns the whole family in one
+# host-side query.
+RecordSource = Callable[[Any, Any, Any], set]
+_RECORD_SOURCES: dict[str, list[RecordSource]] = {}
+
 
 def register_resolver(entity_type: str, principal: str, fn: Resolver) -> None:
     """Register how a relationship ``principal`` is decided for ``entity_type``."""
@@ -47,6 +56,16 @@ def register_global_source(fn: GlobalSource) -> None:
         _GLOBAL_SOURCES.append(fn)
 
 
+def register_record_source(entity_type: str, fn: RecordSource) -> None:
+    """Register a source of record-scoped principal *sets* for ``entity_type``
+    (e.g. the host resolves every ``project_role:<key>`` the user holds on the
+    record's project in one query). Idempotent — re-registering the same
+    function is a no-op. Sources are only consulted when a record is present."""
+    sources = _RECORD_SOURCES.setdefault(entity_type, [])
+    if fn not in sources:
+        sources.append(fn)
+
+
 def _role_of(user: Any) -> Optional[str]:
     role = getattr(user, "role", None)
     if role is None:
@@ -58,9 +77,11 @@ def held_principals(
     user: Any, entity_type: str, record: Any, session: Any
 ) -> set[str]:
     """The set of principals ``user`` holds w.r.t. ``record``: their global role,
-    the keys of groups they belong to (global sources), plus every registered
-    relationship that resolves true. ``None`` user (anonymous) holds nothing. A
-    misbehaving resolver/source is treated as not-applicable (never grants)."""
+    the keys of groups they belong to (global sources), every registered
+    relationship that resolves true, plus (when a record is present) the union of
+    the entity's record sources (TEAMY-486). ``None`` user (anonymous) holds
+    nothing. A misbehaving resolver/source is treated as not-applicable (never
+    grants)."""
     held: set[str] = set()
     if user is None:
         return held
@@ -80,4 +101,10 @@ def held_principals(
                 held.add(principal)
         except Exception:
             continue
+    if record is not None:
+        for source in _RECORD_SOURCES.get(entity_type, ()):
+            try:
+                held.update(source(user, record, session))
+            except Exception:
+                continue
     return held

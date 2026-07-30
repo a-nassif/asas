@@ -26,10 +26,12 @@ def _clean_registries():
     yield
     catalog._FIELDS.clear()
     actions._ACTIONS.clear()
+    actions._RECORD_ACTIONS.clear()
     actions._cache = None
     policy._cache = None
     principals._RESOLVERS.clear()
     principals._GLOBAL_SOURCES.clear()
+    principals._RECORD_SOURCES.clear()
     groups._host_reserved.clear()
     visibility._PRIVATE_VIEWERS.clear()
 
