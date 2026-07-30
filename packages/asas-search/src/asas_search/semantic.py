@@ -120,10 +120,11 @@ MAX_DISTANCE = 0.7
 # fts._QUERY. embedding_model = :model keeps distances within one vector space.
 _KNN = text(
     """
-    SELECT entity_id, context, distance FROM (
+    SELECT entity_id, context, source, distance FROM (
         SELECT DISTINCT ON (entity_id)
                entity_id,
                context,
+               source,
                embedding <=> CAST(:qvec AS vector) AS distance
         FROM search_document
         WHERE entity_type = :entity_type
@@ -142,6 +143,7 @@ _KNN = text(
 class SemanticRow(NamedTuple):
     entity_id: int
     context: str
+    source: str
 
 
 def _query_vector(q: str) -> Optional[List[float]]:
@@ -181,4 +183,4 @@ def knn(
             "k": k,
         },
     ).all()
-    return [SemanticRow(r.entity_id, r.context) for r in rows]
+    return [SemanticRow(r.entity_id, r.context, r.source) for r in rows]
