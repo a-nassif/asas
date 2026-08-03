@@ -11,6 +11,7 @@ from typing import Any
 from sqlmodel import Session
 
 from .actions import action_allowed
+from .mac import mac_allows
 from .principals import ROLE_ADMIN, held_principals
 
 # The org-wide "see any private record" right beyond the admin floor. Config, not
@@ -40,10 +41,15 @@ def _visibility_of(record: Any) -> Any:
 def can_view_record(
     session: Session, user: Any, entity_type: str, record: Any
 ) -> bool:
-    """Whether ``user`` may see ``record``. Public (or no ``visibility``) ⇒ everyone;
-    private ⇒ the admin floor, holders of ``record.view_private`` (grant rows —
-    People Ops by default), or any registered relationship principal (e.g. the
-    team's lead or members). ``None`` user sees only public records."""
+    """Whether ``user`` may see ``record``. The **mandatory** layer runs first
+    (DR 0021): a caller failing the record's clearance/markings never reaches the
+    discretionary logic below — no admin floor applies there. Then: public (or no
+    ``visibility``) ⇒ everyone; private ⇒ the admin floor, holders of
+    ``record.view_private`` (grant rows — People Ops by default), or any
+    registered relationship principal (e.g. the team's lead or members).
+    ``None`` user sees only public records."""
+    if not mac_allows(session, user, entity_type, record):
+        return False
     if _visibility_of(record) != PRIVATE:
         return True
     held = held_principals(user, entity_type, record, session)

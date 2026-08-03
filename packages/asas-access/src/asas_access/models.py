@@ -103,3 +103,97 @@ class AccessGroupMembership(SQLModel, table=True):
     # Plain int (no FK) — the package never imports app models; app-side wiring
     # owns the join to org_membership (access_wiring._group_keys).
     org_membership_id: int = Field(index=True)
+
+
+class ClearanceLevel(SQLModel, table=True):
+    """One level of an org's ordered clearance catalog (TEAMY-59, DR 0021).
+
+    ``code`` is the stable string records and subject assignments reference
+    (codes-vs-labels house rule: renaming touches ``name`` only); ``rank``
+    is the only ordered thing — higher rank clears lower-ranked records.
+    Org-scoped like every catalog post-DR-0020; hosts seed a default catalog
+    per org via :func:`asas_access.mac.ensure_clearance_levels`.
+    """
+
+    __tablename__ = "clearance_level"
+    __table_args__ = (
+        UniqueConstraint("org_id", "code", name="uq_clearance_level_org_code"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    org_id: int = Field(index=True)
+    code: str = Field(index=True)
+    name: str
+    rank: int
+
+
+class Marking(SQLModel, table=True):
+    """One compartment in an org's marking catalog (need-to-know, DR 0021).
+
+    Markings compose restrictively: a record carrying markings is visible only
+    to subjects holding **all** of them (AND semantics — unlike groups' union).
+    No seeded defaults — compartments are inherently org-specific.
+    """
+
+    __tablename__ = "marking"
+    __table_args__ = (
+        UniqueConstraint("org_id", "code", name="uq_marking_org_code"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    org_id: int = Field(index=True)
+    code: str = Field(index=True)
+    name: str
+    description: Optional[str] = None
+
+
+class SubjectClearance(SQLModel, table=True):
+    """A subject's clearance level — at most one per org membership. Plain int
+    (no FK) like group membership: the host owns the join to its membership
+    table (the registered subject source). Unassigned subjects hold the org
+    catalog's minimum rank implicitly (see ``mac.mac_allows``)."""
+
+    __tablename__ = "subject_clearance"
+    __table_args__ = (
+        UniqueConstraint("org_membership_id", name="uq_subject_clearance"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    org_membership_id: int = Field(index=True)
+    level_code: str
+
+
+class SubjectMarking(SQLModel, table=True):
+    """One marking a subject has been read into — N per org membership."""
+
+    __tablename__ = "subject_marking"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_membership_id", "marking_code", name="uq_subject_marking"
+        ),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    org_membership_id: int = Field(index=True)
+    marking_code: str
+
+
+class RecordMarking(SQLModel, table=True):
+    """One marking stamped on one record — the polymorphic record side of the
+    MAC layer, so N classified entity types don't need N join tables. The
+    record's *level* stamp is a host-owned ``classification_code`` column on
+    the entity itself (read by value, like ``visibility``)."""
+
+    __tablename__ = "record_marking"
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "entity_type", "record_id", "marking_code",
+            name="uq_record_marking",
+        ),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    org_id: int = Field(index=True)
+    entity_type: str = Field(index=True)
+    record_id: int = Field(index=True)
+    marking_code: str

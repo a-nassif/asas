@@ -12,7 +12,18 @@ from asas_access.models import (
     FieldPermission,
 )
 
-_TABLES = ("field_permission", "action_permission", "access_group", "access_group_membership")
+_TABLES = (
+    "field_permission",
+    "action_permission",
+    "access_group",
+    "access_group_membership",
+    # MAC layer (0002, DR 0021)
+    "clearance_level",
+    "marking",
+    "subject_clearance",
+    "subject_marking",
+    "record_marking",
+)
 _ACCESS_SQLMODEL_TABLES = [
     FieldPermission.__table__,
     ActionPermission.__table__,

@@ -44,8 +44,29 @@ from .groups import (
     reserved_principals,
     validate_group_key,
 )
+from .mac import (
+    classified_entities,
+    ensure_clearance_levels,
+    invalidate_mac_cache,
+    invalidate_record_markings,
+    mac_allows,
+    record_markings,
+    register_classified_entity,
+    register_subject_source,
+    subject_access_profile,
+)
 from .migrate import migrate
-from .models import AccessGroup, AccessGroupMembership, ActionPermission, FieldPermission
+from .models import (
+    AccessGroup,
+    AccessGroupMembership,
+    ActionPermission,
+    ClearanceLevel,
+    FieldPermission,
+    Marking,
+    RecordMarking,
+    SubjectClearance,
+    SubjectMarking,
+)
 from .policy import (
     can_edit_field,
     can_view_field,
@@ -78,15 +99,20 @@ from .visibility import (
     register_private_viewers,
 )
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 __all__ = [
     "AccessGroup",
     "AccessGroupMembership",
     "ActionPermission",
     "CHANGE_APPROVER",
+    "ClearanceLevel",
     "FieldPermission",
+    "Marking",
     "PRIVATE",
+    "RecordMarking",
+    "SubjectClearance",
+    "SubjectMarking",
     "PROJECT_LEAD",
     "PUBLIC",
     "ROLE_ADMIN",
@@ -102,6 +128,8 @@ __all__ = [
     "can_edit_field",
     "can_view_field",
     "can_view_record",
+    "classified_entities",
+    "ensure_clearance_levels",
     "ensure_system_groups",
     "forbidden_edits",
     "group_by_key",
@@ -109,17 +137,24 @@ __all__ = [
     "held_principals",
     "invalidate_action_cache",
     "invalidate_cache",
+    "invalidate_mac_cache",
+    "invalidate_record_markings",
     "known_actions",
     "known_fields",
+    "mac_allows",
     "migrate",
+    "record_markings",
     "record_scoped_actions",
     "redact_view",
     "register_actions",
+    "register_classified_entity",
     "register_fields",
     "register_global_source",
     "register_private_viewers",
     "register_record_source",
     "register_resolver",
+    "register_subject_source",
+    "subject_access_profile",
     "reserve_principals",
     "reserved_principals",
     "seed_action_permissions",

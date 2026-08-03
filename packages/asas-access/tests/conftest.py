@@ -16,7 +16,7 @@ import pytest
 from sqlmodel import Session, create_engine
 
 import asas_access
-from asas_access import actions, catalog, groups, policy, principals, visibility
+from asas_access import actions, catalog, groups, mac, policy, principals, visibility
 
 _TEST_URL = os.environ.get("TEST_DATABASE_URL")
 
@@ -34,6 +34,9 @@ def _clean_registries():
     principals._RECORD_SOURCES.clear()
     groups._host_reserved.clear()
     visibility._PRIVATE_VIEWERS.clear()
+    mac._CLASSIFIED.clear()
+    mac._subject_source = None
+    mac._level_cache = None
 
 
 @pytest.fixture()
