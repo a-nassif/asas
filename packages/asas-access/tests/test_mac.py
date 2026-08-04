@@ -181,6 +181,30 @@ def test_fail_closed_edges(session):
     assert not access.mac_allows(session, user, "project", _record("internal"))
 
 
+def test_marked_only_record_without_org_fails_closed(session):
+    """A record with markings but no resolvable org (no org_id attribute on the
+    record — e.g. a child row — and an anonymous/system caller) must DENY, not
+    silently skip the marking check (code-review finding: fail-open)."""
+    access.register_classified_entity("document")
+    _subject_source(session)
+    doc = SimpleNamespace(id=41, classification_code=None)  # no org_id attr
+    session.add(
+        RecordMarking(
+            org_id=ORG, entity_type="document", record_id=41, marking_code="vault"
+        )
+    )
+    session.commit()
+    assert not access.mac_allows(session, None, "document", doc)
+    unmarked_user = make_user("admin", user_id=30)  # org resolves via the user
+    assert not access.mac_allows(session, unmarked_user, "document", doc)
+    holder = make_user("member", user_id=31)
+    _assign(session, holder, markings=["vault"])
+    assert access.mac_allows(session, holder, "document", doc)
+    # Unmarked record without org stays allowed (dormant layer).
+    plain = SimpleNamespace(id=42, classification_code=None)
+    assert access.mac_allows(session, None, "document", plain)
+
+
 def test_can_view_record_runs_mac_first(session):
     """MAC-then-DAC: a PUBLIC record that is classified stays invisible to the
     uncleared; the private-record admin floor never applies to the MAC part."""

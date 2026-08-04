@@ -155,8 +155,24 @@ def mac_allows(session: Session, user: Any, entity_type: str, record: Any) -> bo
     classification = _classification_of(record)
     marks: Set[str] = set()
     record_id = getattr(record, "id", None)
-    if org_id is not None and record_id is not None:
-        marks = record_markings(session, org_id, entity_type, record_id)
+    if record_id is not None:
+        if org_id is not None:
+            marks = record_markings(session, org_id, entity_type, record_id)
+        else:
+            # Org unresolvable (record carries no org_id and the caller has
+            # none — e.g. an anonymous/system subject): resolve the stamps
+            # directly, uncached. Record ids are unique per entity table, so
+            # the org filter is redundant for a point lookup. Skipping this
+            # lookup would FAIL OPEN for marked-only records — never do that.
+            marks = {
+                row.marking_code
+                for row in session.exec(
+                    select(RecordMarking).where(
+                        RecordMarking.entity_type == entity_type,
+                        RecordMarking.record_id == record_id,
+                    )
+                ).all()
+            }
     if classification is None and not marks:
         return True  # unclassified — the layer is dormant for this record
     if user is None:
