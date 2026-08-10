@@ -1,10 +1,27 @@
 # asas-storage
 
 A pluggable file/object storage seam: every stored byte goes through one process-wide
-backend behind a traversal-safe `Storage` protocol. Two built-in backends — `LocalStorage`
-(zero-config on-disk) and `S3Storage` (any S3-compatible endpoint: AWS S3, Supabase
-Storage, MinIO, R2; needs the `[s3]` extra) — with identical key semantics, so swapping
-backends never touches data.
+backend behind a traversal-safe `Storage` protocol. Three built-in backends —
+`LocalStorage` (zero-config on-disk), `S3Storage` (any S3-compatible endpoint: AWS S3,
+Supabase Storage, MinIO, R2; needs the `[s3]` extra) and `AzureBlobStorage` (needs the
+`[azure]` extra) — with identical key semantics, so swapping backends never touches data.
+
+**Azure Blob is a native backend, not an S3 alias.** Azure exposes no S3 API, so
+`S3Storage` cannot reach it; the alternative would be an S3 translation gateway
+(MinIO/S3Proxy), which adds a component to patch and forces a static key pair back into
+the design. `AzureBlobStorage` speaks the Blob API directly, which is what lets the
+preferred configuration hold **no credential at all**:
+
+```python
+AzureBlobStorage(container="uploads", account_url="https://acct.blob.core.windows.net")
+```
+
+authenticates via `DefaultAzureCredential` — managed identity in Azure, developer
+credentials elsewhere. A `connection_string=` (account key) is accepted instead, for the
+storage emulator and for deployments whose identity plane can't issue workload tokens.
+Exactly one of the two is required: passing neither is a misconfiguration, and passing
+both is ambiguous in a way that could leave an operator believing managed identity is in
+use when a key is.
 
 Keys are `/`-separated relative paths (the strings the host stores in its DB). Absolute
 paths and `..`/empty segments are rejected identically on disk and bucket: traversal
@@ -39,6 +56,20 @@ storage().delete_prefix(f"orgs/{org}/photos/{member_id}")
 
 Tests point the singleton at a tmp dir: `set_storage(LocalStorage(tmp_path))`
 (`set_storage(None)` resets to lazy re-selection via the factory).
+
+## Running the tests
+
+The contract suite asserts backend *parity*: the same assertions run against local disk,
+S3 (via moto) and Azure Blob (via Azurite). The Azure leg skips unless an emulator is
+listening on `127.0.0.1:10000`, so start one first — with `--skipApiVersionCheck`, since
+the SDK sends a newer API version than Azurite implements and every request 400s without
+it (which presents as the whole leg quietly skipping, not as a failure):
+
+```bash
+docker run -d --rm --name azurite -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+```
+
+A full local run is `35 passed`; if you see skips, the emulator isn't up.
 
 See the repo README for the full contract. Extracted from Teamy (storage seam TEAMY-248,
 extraction epic TEAMY-466 / design record 0017).

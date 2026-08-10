@@ -16,9 +16,12 @@ over HTTP is host auth territory):
 - :func:`set_storage` — direct instance override (tests point this at a tmp-dir
   ``LocalStorage``); ``None`` resets to lazy re-selection via the factory.
 - :class:`Storage` / :class:`FileStat` — the backend protocol.
-- :class:`LocalStorage` / :class:`S3Storage` — built-in backends (S3 needs the
-  ``[s3]`` extra; its module imports boto3 lazily, so the class is importable
-  without it).
+- :class:`LocalStorage` / :class:`S3Storage` / :class:`AzureBlobStorage` — built-in
+  backends (S3 needs the ``[s3]`` extra, Azure Blob the ``[azure]`` extra; both
+  modules import their SDK lazily, so the classes stay importable without it).
+  Azure Blob speaks no S3 API, hence a native backend rather than a gateway —
+  and it is the one backend that can run with no stored credential at all
+  (managed identity via ``account_url``).
 - :func:`safe_filename` / :func:`valid_key` — key hygiene helpers.
 """
 
@@ -26,13 +29,15 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+from .azure_blob import AzureBlobStorage
 from .base import FileStat, Storage, safe_filename, valid_key
 from .local import LocalStorage
 from .s3 import S3Storage
 
-__version__ = "0.10.1"
+__version__ = "0.11.0"
 
 __all__ = [
+    "AzureBlobStorage",
     "FileStat",
     "LocalStorage",
     "S3Storage",

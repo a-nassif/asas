@@ -43,6 +43,19 @@ jobs:
           cache: pip
           cache-dependency-path: packages/${{ matrix.package }}/pyproject.toml
 
+      # Azure Blob emulator — asas-storage proves backend parity against a real
+      # Blob endpoint (Azure has no moto equivalent). Not a `services:` entry
+      # because Azurite needs arguments: the SDK sends a newer API version than
+      # the emulator knows, so without --skipApiVersionCheck every request 400s
+      # and the whole azure leg silently skips. Only started for the one package
+      # that uses it; the fixture skips itself when nothing is listening.
+      - name: Start Azurite
+        if: matrix.package == 'asas-storage'
+        run: |
+          docker run -d --name azurite -p 10000:10000 \
+            mcr.microsoft.com/azure-storage/azurite \
+            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+
       - name: Install package
         working-directory: packages/${{ matrix.package }}
         run: pip install -e '.[dev]'
