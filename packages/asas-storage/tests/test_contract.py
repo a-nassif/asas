@@ -3,6 +3,7 @@ Azurite), traversal safety, prefix directory-semantics, and key hygiene.
 Ported from Teamy's tests/test_storage.py (TEAMY-248) with the extraction
 (TEAMY-472); Azure Blob added with TEAMY-71."""
 
+import os
 import uuid
 
 import pytest
@@ -51,6 +52,11 @@ def store(request, tmp_path):
     try:
         service.get_service_properties()
     except (AzureError, OSError) as exc:  # emulator not running
+        if os.environ.get("ASAS_REQUIRE_AZURE"):
+            pytest.fail(
+                "ASAS_REQUIRE_AZURE is set but Azurite is unavailable at "
+                f"127.0.0.1:10000 ({exc}) — the azure leg may not silently skip"
+            )
         pytest.skip(f"Azurite unavailable at 127.0.0.1:10000 ({exc})")
     # A fresh container per test: Azure has no moto-style in-memory isolation,
     # so leaked blobs would otherwise cross-contaminate the assertions.

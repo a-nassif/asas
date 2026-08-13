@@ -66,10 +66,12 @@ the SDK sends a newer API version than Azurite implements and every request 400s
 it (which presents as the whole leg quietly skipping, not as a failure):
 
 ```bash
-docker run -d --rm --name azurite -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+docker run -d --rm --name azurite -p 10000:10000 mcr.microsoft.com/azure-storage/azurite:3.36.0 azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
 ```
 
-A full local run is `35 passed`; if you see skips, the emulator isn't up.
+A full local run is `45 passed`; if you see skips, the emulator isn't up. In CI the
+skip is promoted to a hard failure (`ASAS_REQUIRE_AZURE=1`), so the azure leg can
+never vanish silently.
 
 See the repo README for the full contract. Extracted from Teamy (storage seam TEAMY-248,
 extraction epic TEAMY-466 / design record 0017).
