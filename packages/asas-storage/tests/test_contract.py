@@ -1,26 +1,71 @@
-"""Backend contract parity (local disk vs S3 via moto), traversal safety,
-prefix directory-semantics, and key hygiene. Ported from Teamy's
-tests/test_storage.py (TEAMY-248) with the extraction (TEAMY-472)."""
+"""Backend contract parity (local disk vs S3 via moto vs Azure Blob via
+Azurite), traversal safety, prefix directory-semantics, and key hygiene.
+Ported from Teamy's tests/test_storage.py (TEAMY-248) with the extraction
+(TEAMY-472); Azure Blob added with TEAMY-71."""
+
+import os
+import uuid
 
 import pytest
 
-from asas_storage import LocalStorage, S3Storage, safe_filename
+from asas_storage import AzureBlobStorage, LocalStorage, S3Storage, safe_filename
+
+# Azurite's well-known emulator account — a published fixed credential, not a
+# secret. CI runs Azurite as a service container; locally the azure leg skips
+# unless you have one listening.
+AZURITE_CONN = (
+    "DefaultEndpointsProtocol=http;"
+    "AccountName=devstoreaccount1;"
+    "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/"
+    "K1SZFPTOtr/KBHBeksoGMGw==;"
+    "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+)
 
 
-@pytest.fixture(params=["local", "s3"])
+@pytest.fixture(params=["local", "s3", "azure"])
 def store(request, tmp_path):
-    """The same contract assertions run against both backends."""
+    """The same contract assertions run against every backend."""
     if request.param == "local":
         yield LocalStorage(tmp_path)
         return
-    moto = pytest.importorskip("moto")
-    import boto3
+    if request.param == "s3":
+        moto = pytest.importorskip("moto")
+        import boto3
 
-    with moto.mock_aws():
-        boto3.client("s3", region_name="us-east-1").create_bucket(Bucket="asas-test")
-        yield S3Storage(
-            bucket="asas-test", access_key="test", secret_key="test", region="us-east-1"
-        )
+        with moto.mock_aws():
+            boto3.client("s3", region_name="us-east-1").create_bucket(
+                Bucket="asas-test"
+            )
+            yield S3Storage(
+                bucket="asas-test",
+                access_key="test",
+                secret_key="test",
+                region="us-east-1",
+            )
+        return
+
+    pytest.importorskip("azure.storage.blob")
+    from azure.core.exceptions import AzureError
+    from azure.storage.blob import BlobServiceClient
+
+    service = BlobServiceClient.from_connection_string(AZURITE_CONN)
+    try:
+        service.get_service_properties()
+    except (AzureError, OSError) as exc:  # emulator not running
+        if os.environ.get("ASAS_REQUIRE_AZURE"):
+            pytest.fail(
+                "ASAS_REQUIRE_AZURE is set but Azurite is unavailable at "
+                f"127.0.0.1:10000 ({exc}) — the azure leg may not silently skip"
+            )
+        pytest.skip(f"Azurite unavailable at 127.0.0.1:10000 ({exc})")
+    # A fresh container per test: Azure has no moto-style in-memory isolation,
+    # so leaked blobs would otherwise cross-contaminate the assertions.
+    name = f"asas-test-{uuid.uuid4().hex[:12]}"
+    service.create_container(name)
+    try:
+        yield AzureBlobStorage(container=name, connection_string=AZURITE_CONN)
+    finally:
+        service.delete_container(name)
 
 
 def test_put_get_roundtrip_and_overwrite(store):
