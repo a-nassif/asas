@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Iterator, Optional, Tuple
 
-from .base import FileStat, valid_key
+from .base import FileStat, RangeNotSatisfiable, valid_key
 
 _CHUNK = 64 * 1024
 _BATCH = 1000  # delete_objects hard limit
@@ -111,6 +111,32 @@ class S3Storage:
                 raise FileNotFoundError(key) from exc
             raise
         stat = FileStat(size=obj["ContentLength"], content_type=obj.get("ContentType"))
+        return stat, obj["Body"].iter_chunks(_CHUNK)
+
+    def fetch_range(
+        self, key: str, start: int, end: int
+    ) -> Tuple[FileStat, Iterator[bytes]]:
+        from botocore.exceptions import ClientError
+
+        if not valid_key(key):
+            raise FileNotFoundError(key)
+        if start < 0 or end < start:
+            raise RangeNotSatisfiable(f"bytes={start}-{end}")
+        try:
+            obj = self._client.get_object(
+                Bucket=self._bucket, Key=key, Range=f"bytes={start}-{end}"
+            )
+        except ClientError as exc:
+            if self._missing(exc):
+                raise FileNotFoundError(key) from exc
+            if exc.response.get("Error", {}).get("Code") == "InvalidRange":
+                # start past EOF — S3's 416.
+                raise RangeNotSatisfiable(f"bytes={start}-{end}") from exc
+            raise
+        # Ranged GetObject's ContentLength is the RANGE length; the total rides
+        # ContentRange ("bytes 0-99/1234").
+        total = int(obj["ContentRange"].rpartition("/")[2])
+        stat = FileStat(size=total, content_type=obj.get("ContentType"))
         return stat, obj["Body"].iter_chunks(_CHUNK)
 
     def exists(self, key: str) -> bool:

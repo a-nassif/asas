@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Iterator, List, Optional, Tuple
 
-from .base import FileStat, valid_key
+from .base import FileStat, RangeNotSatisfiable, valid_key
 
 # On Azure each downloaded chunk is a separate ranged GET (unlike S3, where
 # chunks slice one streaming response), so this is deliberately larger than
@@ -165,6 +165,40 @@ class AzureBlobStorage:
 
     def get(self, key: str) -> bytes:
         return self._download(key).readall()
+
+    def fetch_range(
+        self, key: str, start: int, end: int
+    ) -> Tuple[FileStat, Iterator[bytes]]:
+        from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
+
+        if not valid_key(key):
+            raise FileNotFoundError(key)
+        if start < 0 or end < start:
+            raise RangeNotSatisfiable(f"bytes={start}-{end}")
+        try:
+            downloader = self._container.download_blob(
+                key, offset=start, length=end - start + 1
+            )
+        except ResourceNotFoundError as exc:
+            if exc.error_code == "BlobNotFound":
+                raise FileNotFoundError(key) from exc
+            raise
+        except HttpResponseError as exc:
+            if exc.status_code == 416:  # start past EOF
+                raise RangeNotSatisfiable(f"bytes={start}-{end}") from exc
+            raise
+        # A ranged download's ``properties.size`` is the RANGE length; the
+        # blob's total size rides ``content_range`` ("bytes 0-99/1234").
+        props = downloader.properties
+        content_range = getattr(props, "content_range", None)
+        total = (
+            int(content_range.rpartition("/")[2]) if content_range else props.size
+        )
+        stat = FileStat(
+            size=total,
+            content_type=_to_stat(props).content_type,
+        )
+        return stat, downloader.chunks()
 
     def stream(self, key: str) -> Iterator[bytes]:
         return self._download(key).chunks()

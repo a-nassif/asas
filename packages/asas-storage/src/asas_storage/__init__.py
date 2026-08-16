@@ -30,15 +30,16 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from .azure_blob import AzureBlobStorage
-from .base import FileStat, Storage, safe_filename, valid_key
+from .base import FileStat, RangeNotSatisfiable, Storage, safe_filename, valid_key
 from .local import LocalStorage
 from .s3 import S3Storage
 
-__version__ = "0.11.0"
+__version__ = "0.14.0"
 
 __all__ = [
     "AzureBlobStorage",
     "FileStat",
+    "RangeNotSatisfiable",
     "LocalStorage",
     "S3Storage",
     "Storage",

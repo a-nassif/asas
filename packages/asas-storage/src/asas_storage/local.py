@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Iterator, Optional, Tuple
 
-from .base import FileStat, valid_key
+from .base import FileStat, RangeNotSatisfiable, valid_key
 
 _CHUNK = 64 * 1024
 
@@ -63,6 +63,32 @@ class LocalStorage:
     def _chunks(full: Path) -> Iterator[bytes]:
         with full.open("rb") as fh:
             while chunk := fh.read(_CHUNK):
+                yield chunk
+
+    def fetch_range(
+        self, key: str, start: int, end: int
+    ) -> Tuple[FileStat, Iterator[bytes]]:
+        full = self._full(key)
+        if full is None or not full.is_file():
+            raise FileNotFoundError(key)
+        size = full.stat().st_size
+        if start < 0 or end < start or start >= size:
+            raise RangeNotSatisfiable(f"bytes={start}-{end} of {size}")
+        end = min(end, size - 1)
+        stat = FileStat(
+            size=size, content_type=mimetypes.guess_type(key)[0]
+        )
+        return stat, self._range_chunks(full, start, end - start + 1)
+
+    @staticmethod
+    def _range_chunks(full: Path, offset: int, remaining: int) -> Iterator[bytes]:
+        with full.open("rb") as fh:
+            fh.seek(offset)
+            while remaining > 0:
+                chunk = fh.read(min(_CHUNK, remaining))
+                if not chunk:  # truncated under our feet — stop cleanly
+                    break
+                remaining -= len(chunk)
                 yield chunk
 
     def exists(self, key: str) -> bool:

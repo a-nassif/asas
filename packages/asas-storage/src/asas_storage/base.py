@@ -18,6 +18,13 @@ class FileStat:
     content_type: Optional[str] = None
 
 
+class RangeNotSatisfiable(ValueError):
+    """``fetch_range`` was asked for bytes no object of this size has —
+    ``start`` negative, past EOF, or past ``end``. Maps to HTTP 416 at the
+    serving layer; a subclass of ``ValueError`` so pre-contract callers that
+    caught broadly keep working."""
+
+
 _SAFE_NAME_CHARS = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 ._()-"
 )
@@ -62,6 +69,21 @@ class Storage(Protocol):
         """Stat + stream in one backend call (the serving hot path — on S3 a
         single GetObject instead of Head+Get). Raises FileNotFoundError when
         absent."""
+        ...
+
+    def fetch_range(
+        self, key: str, start: int, end: int
+    ) -> Tuple[FileStat, Iterator[bytes]]:
+        """Stat + stream of the INCLUSIVE byte range ``[start, end]`` — HTTP
+        Range semantics, added for video serving (Teamy TEAMY-679; a seek must
+        not re-download from byte zero, and Safari refuses media URLs without
+        206 support). ``FileStat.size`` is the TOTAL object size, so callers
+        can build ``Content-Range: bytes start-end/total``; an ``end`` past
+        EOF is clamped (also HTTP semantics). Raises FileNotFoundError when
+        absent, :class:`RangeNotSatisfiable` when ``start`` is negative,
+        beyond EOF, or greater than ``end``. Each backend serves the range
+        natively (seek / ranged GetObject / offset+length download) — never by
+        reading the whole object."""
         ...
 
     def exists(self, key: str) -> bool: ...

@@ -163,3 +163,41 @@ def test_safe_filename_flattens_exotic_characters():
     assert safe_filename("données_2025.csv") == "donn_es_2025.csv"
     assert safe_filename("\u202f") == "_"  # a lone exotic char still yields a key
     assert safe_filename("") == "file"  # empty basename -> placeholder
+
+
+def test_fetch_range_serves_http_range_semantics(store):
+    """fetch_range (TEAMY-679): inclusive [start, end], total size on the
+    stat, EOF clamping, and RangeNotSatisfiable — identical on every backend."""
+    from asas_storage import RangeNotSatisfiable
+
+    key = f"range/{uuid.uuid4()}.bin"
+    payload = bytes(range(256)) * 4  # 1024 bytes, position-identifiable
+    store.put(key, payload, content_type="application/octet-stream")
+
+    # A middle slice, inclusive on both ends.
+    stat, chunks = store.fetch_range(key, 100, 199)
+    assert b"".join(chunks) == payload[100:200]
+    assert stat.size == len(payload)  # TOTAL size — Content-Range needs it
+
+    # First and last byte.
+    _, chunks = store.fetch_range(key, 0, 0)
+    assert b"".join(chunks) == payload[:1]
+    _, chunks = store.fetch_range(key, len(payload) - 1, len(payload) - 1)
+    assert b"".join(chunks) == payload[-1:]
+
+    # end past EOF clamps (HTTP semantics).
+    stat, chunks = store.fetch_range(key, 1000, 5000)
+    assert b"".join(chunks) == payload[1000:]
+    assert stat.size == len(payload)
+
+    # Unsatisfiable starts → RangeNotSatisfiable (the serving layer's 416).
+    with pytest.raises(RangeNotSatisfiable):
+        store.fetch_range(key, len(payload), len(payload) + 10)
+    with pytest.raises(RangeNotSatisfiable):
+        store.fetch_range(key, -1, 10)
+    with pytest.raises(RangeNotSatisfiable):
+        store.fetch_range(key, 50, 40)
+
+    # Missing objects stay FileNotFoundError, not a range error.
+    with pytest.raises(FileNotFoundError):
+        store.fetch_range(f"range/{uuid.uuid4()}.bin", 0, 10)
