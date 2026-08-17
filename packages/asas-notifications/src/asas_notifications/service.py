@@ -161,8 +161,9 @@ def notify(
       new)`` when given), ``created_at`` refreshed — instead of inserting, so an
       edit burst stays one live bell entry. Only ambient emits coalesce: it
       requires an entity key and is ignored whenever the emit routes to external
-      channels (each email-worthy event stays a discrete row), and read rows are
-      never rewritten.
+      channels (each email-worthy event stays a discrete row), and read **or
+      archived** rows are never rewritten — merging into a row the recipient can
+      no longer see would drop the event.
 
     The caller owns the commit — the insert rides the producing transaction, so a
     notification exists iff the domain change committed.
@@ -198,6 +199,11 @@ def notify(
                     Notification.entity_type == entity_type,
                     Notification.entity_id == entity_id,
                     Notification.read_at.is_(None),
+                    # An archived row has left the recipient's inbox. Folding a
+                    # new event into it would update something they can no
+                    # longer see in the default feed — the event would land
+                    # nowhere. Coalescing only ever merges into a LIVE row.
+                    Notification.archived_at.is_(None),
                 )
                 .order_by(Notification.created_at.desc())
             ).first()
@@ -294,7 +300,15 @@ def mark_all_read(session: Session, user_id: int) -> int:
 
 
 def archive(session: Session, user_id: int, notification_id: int) -> Optional[Notification]:
-    """Idempotent — re-archiving keeps the original timestamp."""
+    """Idempotent: archiving an archived row is a no-op, not an error.
+
+    Sequentially that also keeps the original timestamp; two *concurrent*
+    archives of the same row can race and the later write wins, since this is a
+    read-then-write like ``mark_read`` beside it rather than a CAS like the
+    dispatcher's claim. Deliberate — the dispatcher CASes because losing that
+    race sends a duplicate email, while losing this one moves a timestamp by
+    milliseconds on a row that ends archived either way.
+    """
     n = session.get(Notification, notification_id)
     if n is None or n.user_id != user_id:
         return None

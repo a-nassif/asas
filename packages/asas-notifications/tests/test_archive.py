@@ -108,6 +108,49 @@ def test_archive_read_spares_unread_rows(session, kind):
     assert service.archive_read(session, 1) == 0  # nothing left to file
 
 
+def test_coalescing_never_merges_into_an_archived_row(session, ambient_kind):
+    """Archiving an *unread* coalescible row must not make it a sink for later
+    events on the same entity: it has left the inbox, so a merge would land the
+    event where the recipient can no longer see it."""
+    first = emit(
+        session, ambient_kind, [1],
+        entity_type="work_item", entity_id=5, coalesce_unread=True, title="v1",
+    )[0]
+    service.archive(session, 1, first.id)
+
+    emit(
+        session, ambient_kind, [1],
+        entity_type="work_item", entity_id=5, coalesce_unread=True, title="v2",
+    )
+
+    rows = session.exec(
+        select(Notification).where(Notification.user_id == 1)
+    ).all()
+    assert len(rows) == 2, "the archived row was reused instead of a fresh one"
+    assert session.get(Notification, first.id).title == "v1"  # untouched
+    live = [n for n in rows if n.archived_at is None]
+    assert [n.title for n in live] == ["v2"]
+
+
+def test_coalescing_still_merges_into_a_live_row(session, ambient_kind):
+    """The counterpart: an un-archived unread row is still the coalescing target,
+    so the archived-row fix did not disable coalescing outright."""
+    first = emit(
+        session, ambient_kind, [1],
+        entity_type="work_item", entity_id=7, coalesce_unread=True, title="v1",
+    )[0]
+    emit(
+        session, ambient_kind, [1],
+        entity_type="work_item", entity_id=7, coalesce_unread=True, title="v2",
+    )
+
+    rows = session.exec(
+        select(Notification).where(Notification.user_id == 1)
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].id == first.id and rows[0].title == "v2"
+
+
 def test_another_users_notification_is_not_reachable(session, kind):
     n = emit(session, kind, [2])[0]
     assert service.archive(session, 1, n.id) is None
