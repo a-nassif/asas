@@ -57,6 +57,33 @@ notifications.notify(session, recipient_user_ids, "workflow.approval_requested",
 notifications.dispatch_pending(engine)
 ```
 
+## Feed state: two independent axes
+
+A notification carries **`read_at`** (seen) and **`archived_at`** (dealt with),
+and they never imply each other. Reading does not archive, archiving does not
+mark read, and un-archiving does not make a row unread again. That separation is
+the point: a host showing actionable notifications needs a row to survive being
+read and to leave only when the recipient acts on it or files it away — an
+"unread means outstanding" model empties itself as the recipient browses.
+
+`GET /me/notifications` filters compose freely:
+
+| Param | Values | Default |
+| --- | --- | --- |
+| `state` | `open` (un-archived) · `archived` · `all` | `open` |
+| `unread_only` | bool | `false` |
+| `category` | `action` · `info` · `warning` | all |
+
+So `?state=open&category=action` is "still needs me", `?state=archived` is the
+history, and `?unread_only=true` is the classic feed. `total` reflects the
+filters; **`unread_count` never does** — it is unread-and-un-archived on every
+response, so a badge fed from any list call agrees with every other.
+
+Writes: `POST /{id}/read`, `/read-all`, `/{id}/archive`, `/{id}/unarchive`, and
+`/archive-read` (bulk-files the read rows, never an unread one). `resolved_at`
+exists on the row but is deliberately unwritten — Teamy weighed auto-clearing
+action rows from engine events and chose the archive gesture instead.
+
 See the repo README for the full contract. Extracted from Teamy (notifications
 epic WXL-209/WXL-222 + TEAMY-475 dispatch hardening; extraction epic TEAMY-466 /
-design record 0017).
+design record 0017; archive axis + inbox filters TEAMY-693).

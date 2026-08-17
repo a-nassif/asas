@@ -76,8 +76,13 @@ class Notification(SQLModel, table=True):
     body: Optional[str] = None
     link: Optional[str] = None  # frontend deep link, e.g. "/teams/42"
     read_at: Optional[datetime] = None
+    # Dealt with — out of the recipient's inbox. A separate axis from `read_at`:
+    # reading is seeing, archiving is finishing, and a host may well want an
+    # action notification to survive being read (Teamy TEAMY-692 does).
+    archived_at: Optional[datetime] = None
     # Reserved for auto-clearing `action` notifications when the underlying task
-    # completes (deferred behavior; the column is cheap now vs a migration later).
+    # completes. Deliberately unused: Teamy weighed it for TEAMY-692 and chose
+    # the archive gesture instead, so nothing writes this column today.
     resolved_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
