@@ -194,6 +194,15 @@ class AzureBlobStorage:
         total = (
             int(content_range.rpartition("/")[2]) if content_range else props.size
         )
+        # ``start == total`` is unsatisfiable per RFC 9110 §14.1.1, and the 416
+        # above is not enough to enforce it: Azure returns 416 there, but Azurite
+        # answers an empty 206 and only 416s from ``start > total``. Deciding it
+        # here costs nothing — the total came back on this same response — and
+        # makes the backend authoritative about its own contract instead of
+        # trusting a service (or an emulator standing in for one) to be right.
+        # LocalStorage has always done exactly this; only Azure delegated it.
+        if start >= total:
+            raise RangeNotSatisfiable(f"bytes={start}-{end} of {total}")
         stat = FileStat(
             size=total,
             content_type=_to_stat(props).content_type,
