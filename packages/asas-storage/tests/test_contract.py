@@ -191,12 +191,25 @@ def test_fetch_range_serves_http_range_semantics(store):
     assert stat.size == len(payload)
 
     # Unsatisfiable starts → RangeNotSatisfiable (the serving layer's 416).
+    # `start == size` is the boundary that matters: RFC 9110 §14.1.1 makes it
+    # unsatisfiable, real Azure Blob 416s it, and Azurite answers an empty 206
+    # instead — so every backend has to decide this itself rather than relay a
+    # service's verdict (TEAMY-700).
     with pytest.raises(RangeNotSatisfiable):
         store.fetch_range(key, len(payload), len(payload) + 10)
+    with pytest.raises(RangeNotSatisfiable):
+        store.fetch_range(key, len(payload) + 100, len(payload) + 200)
     with pytest.raises(RangeNotSatisfiable):
         store.fetch_range(key, -1, 10)
     with pytest.raises(RangeNotSatisfiable):
         store.fetch_range(key, 50, 40)
+
+    # A zero-length object has no satisfiable range at all — same boundary,
+    # reached from the other side.
+    empty = f"range/{uuid.uuid4()}.empty"
+    store.put(empty, b"", content_type="application/octet-stream")
+    with pytest.raises(RangeNotSatisfiable):
+        store.fetch_range(empty, 0, 0)
 
     # Missing objects stay FileNotFoundError, not a range error.
     with pytest.raises(FileNotFoundError):
