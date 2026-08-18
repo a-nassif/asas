@@ -21,14 +21,22 @@ class NotificationRead(SQLModel):
     body: Optional[str] = None
     link: Optional[str] = None
     read_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
     created_at: datetime
 
 
 class NotificationList(SQLModel):
     items: list[NotificationRead]
+    #: Rows matching the request's filters — the paging total, not an inbox size.
     total: int
+    #: Unread and un-archived, ignoring the request's filters: the same number on
+    #: every view, so a badge fed from any list call agrees with every other.
     unread_count: int
 
 
 class ReadAllResult(SQLModel):
+    updated: int
+
+
+class ArchiveResult(SQLModel):
     updated: int

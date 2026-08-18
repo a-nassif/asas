@@ -161,8 +161,9 @@ def notify(
       new)`` when given), ``created_at`` refreshed — instead of inserting, so an
       edit burst stays one live bell entry. Only ambient emits coalesce: it
       requires an entity key and is ignored whenever the emit routes to external
-      channels (each email-worthy event stays a discrete row), and read rows are
-      never rewritten.
+      channels (each email-worthy event stays a discrete row), and read **or
+      archived** rows are never rewritten — merging into a row the recipient can
+      no longer see would drop the event.
 
     The caller owns the commit — the insert rides the producing transaction, so a
     notification exists iff the domain change committed.
@@ -198,6 +199,11 @@ def notify(
                     Notification.entity_type == entity_type,
                     Notification.entity_id == entity_id,
                     Notification.read_at.is_(None),
+                    # An archived row has left the recipient's inbox. Folding a
+                    # new event into it would update something they can no
+                    # longer see in the default feed — the event would land
+                    # nowhere. Coalescing only ever merges into a LIVE row.
+                    Notification.archived_at.is_(None),
                 )
                 .order_by(Notification.created_at.desc())
             ).first()
@@ -246,9 +252,13 @@ def notify(
 
 
 def unread_count(session: Session, user_id: int) -> int:
+    """Unread rows still in the inbox. Archived rows are excluded — they have left
+    the recipient's list, so counting them would leave a badge pointing at nothing."""
     rows = session.exec(
         select(Notification.id).where(
-            Notification.user_id == user_id, Notification.read_at.is_(None)
+            Notification.user_id == user_id,
+            Notification.read_at.is_(None),
+            Notification.archived_at.is_(None),
         )
     ).all()
     return len(rows)
@@ -267,6 +277,8 @@ def mark_read(session: Session, user_id: int, notification_id: int) -> Optional[
 
 
 def mark_all_read(session: Session, user_id: int) -> int:
+    """Every unread row, archived ones included — a superset of what
+    :func:`unread_count` counts, so this can never leave the badge non-zero."""
     rows = session.exec(
         select(Notification).where(
             Notification.user_id == user_id, Notification.read_at.is_(None)
@@ -275,6 +287,67 @@ def mark_all_read(session: Session, user_id: int) -> int:
     now = datetime.utcnow()
     for n in rows:
         n.read_at = now
+        session.add(n)
+    session.commit()
+    return len(rows)
+
+
+# ── archive state ────────────────────────────────────────────────────────────
+#
+# The second axis: `read_at` is seen, `archived_at` is dealt with. Kept apart so a
+# host can keep an actionable notification in front of the recipient after they
+# have read it, and clear it only when they act on it or file it away.
+
+
+def archive(session: Session, user_id: int, notification_id: int) -> Optional[Notification]:
+    """Idempotent: archiving an archived row is a no-op, not an error.
+
+    Sequentially that also keeps the original timestamp; two *concurrent*
+    archives of the same row can race and the later write wins, since this is a
+    read-then-write like ``mark_read`` beside it rather than a CAS like the
+    dispatcher's claim. Deliberate — the dispatcher CASes because losing that
+    race sends a duplicate email, while losing this one moves a timestamp by
+    milliseconds on a row that ends archived either way.
+    """
+    n = session.get(Notification, notification_id)
+    if n is None or n.user_id != user_id:
+        return None
+    if n.archived_at is None:
+        n.archived_at = datetime.utcnow()
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+    return n
+
+
+def unarchive(session: Session, user_id: int, notification_id: int) -> Optional[Notification]:
+    """Back into the inbox. Read state is untouched — the two axes are independent,
+    so restoring a row does not make it unread again."""
+    n = session.get(Notification, notification_id)
+    if n is None or n.user_id != user_id:
+        return None
+    if n.archived_at is not None:
+        n.archived_at = None
+        session.add(n)
+        session.commit()
+        session.refresh(n)
+    return n
+
+
+def archive_read(session: Session, user_id: int) -> int:
+    """Bulk "clear what I've dealt with": archives the recipient's read rows and
+    leaves unread ones alone. Never archives unread rows — that would hide
+    something the recipient has not seen."""
+    rows = session.exec(
+        select(Notification).where(
+            Notification.user_id == user_id,
+            Notification.read_at.is_not(None),
+            Notification.archived_at.is_(None),
+        )
+    ).all()
+    now = datetime.utcnow()
+    for n in rows:
+        n.archived_at = now
         session.add(n)
     session.commit()
     return len(rows)
