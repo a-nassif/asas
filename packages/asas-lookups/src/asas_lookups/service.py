@@ -409,7 +409,7 @@ def create_value(
     session.refresh(value)
 
     _apply_translations(session, value, translations)
-    for alias in aliases:
+    for alias in _dedup_aliases(aliases):
         session.add(LookupAlias(value_id=value.id, alias=alias))
     _touch_type(type_)
     session.add(type_)
@@ -477,12 +477,36 @@ def deprecate_value(
     return value
 
 
+def _dedup_aliases(aliases: list[str]) -> list[str]:
+    """Strip whitespace, drop blanks, and collapse case-insensitive duplicates
+    (search is case-insensitive, so "Turkey" and "turkey" are redundant)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in aliases:
+        alias = raw.strip()
+        if not alias or alias.lower() in seen:
+            continue
+        seen.add(alias.lower())
+        out.append(alias)
+    return out
+
+
+def _alias_present(value: LookupValue, alias: str) -> bool:
+    key = alias.strip().lower()
+    return any(a.alias.strip().lower() == key for a in value.aliases)
+
+
 def add_alias(
     session: Session, type_: LookupType, code: str, alias: str, lang: Optional[str]
 ) -> LookupValue:
     value = _value_by_code(session, type_.id, code)
     if not value:
         raise HTTPException(status_code=404, detail=f"Unknown code '{code}'")
+    alias = alias.strip()
+    if not alias:
+        raise HTTPException(status_code=422, detail="alias must not be blank")
+    if _alias_present(value, alias):
+        return value  # idempotent: no version bump, no ETag bust on a no-op
     session.add(LookupAlias(value_id=value.id, alias=alias, lang=lang))
     _touch_type(type_)
     session.add(type_)
@@ -520,7 +544,8 @@ def merge_values(
     if not source or not target:
         raise HTTPException(status_code=404, detail="Source or target code not found")
     for t in source.translations:
-        session.add(LookupAlias(value_id=target.id, alias=t.label, lang=t.lang))
+        if not _alias_present(target, t.label):
+            session.add(LookupAlias(value_id=target.id, alias=t.label, lang=t.lang))
     source.status = LookupStatus.deprecated
     source.superseded_by_id = target.id
     source.valid_to = datetime.utcnow().date()

@@ -86,3 +86,41 @@ def test_admin_type_and_value_crud(client):
     )
     assert client.get("/lookups/widget").json()["total"] == 0
     assert client.get("/lookups/widget/sprocket").status_code == 200
+
+
+def test_add_alias_is_idempotent(client):
+    client.post("/admin/lookup-types", json={"key": "widget", "name": "Widget"})
+    client.post(
+        "/admin/lookups/widget",
+        json={"code": "gear", "translations": [{"lang": "en", "label": "Gear"}]},
+    )
+    # same alias twice (second with surrounding whitespace) → one row, no 4xx
+    assert (
+        client.post("/admin/lookups/widget/gear/aliases", json={"alias": "cog"}).status_code
+        == 200
+    )
+    assert (
+        client.post("/admin/lookups/widget/gear/aliases", json={"alias": " cog "}).status_code
+        == 200
+    )
+    body = client.get("/lookups/widget/gear").json()
+    assert body["aliases"] == ["cog"]
+    # a blank alias is rejected, not silently stored
+    assert (
+        client.post("/admin/lookups/widget/gear/aliases", json={"alias": "   "}).status_code
+        == 422
+    )
+
+
+def test_create_value_dedups_aliases(client):
+    client.post("/admin/lookup-types", json={"key": "widget", "name": "Widget"})
+    resp = client.post(
+        "/admin/lookups/widget",
+        json={
+            "code": "lever",
+            "translations": [{"lang": "en", "label": "Lever"}],
+            "aliases": [" bar ", "", "bar", "Baz", "baz"],
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert set(resp.json()["aliases"]) == {"bar", "Baz"}
