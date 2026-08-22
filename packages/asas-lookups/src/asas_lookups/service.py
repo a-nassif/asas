@@ -518,12 +518,18 @@ def add_alias(
 def remove_alias(
     session: Session, type_: LookupType, code: str, alias: str
 ) -> LookupValue:
-    """Delete every alias row matching ``alias`` on the value (idempotent: removing an
-    alias that isn't there is a no-op, not an error)."""
+    """Delete every alias row matching ``alias`` on the value, compared the same way
+    ``add_alias`` checks presence (stripped, case-insensitive) so any alias that
+    add treats as already-there can be removed by that same spelling. Idempotent:
+    removing an alias that isn't there is a no-op, not an error."""
     value = _value_by_code(session, type_.id, code)
     if not value:
         raise HTTPException(status_code=404, detail=f"Unknown code '{code}'")
-    for row in [a for a in value.aliases if a.alias == alias]:
+    key = alias.strip().lower()
+    rows = [a for a in value.aliases if a.alias.strip().lower() == key]
+    if not rows:
+        return value  # idempotent: no version bump, no ETag bust on a no-op
+    for row in rows:
         session.delete(row)
     _touch_type(type_)
     session.add(type_)
@@ -543,8 +549,15 @@ def merge_values(
     target = _value_by_code(session, type_.id, into)
     if not source or not target:
         raise HTTPException(status_code=404, detail="Source or target code not found")
+    # Seed from the target's persisted aliases, then track additions locally:
+    # rows added via session.add aren't in target.aliases until commit, so two
+    # source translations sharing a label (e.g. "Taxi" en + fr) would both pass
+    # an _alias_present check.
+    seen = {a.alias.strip().lower() for a in target.aliases}
     for t in source.translations:
-        if not _alias_present(target, t.label):
+        key = t.label.strip().lower()
+        if key and key not in seen:
+            seen.add(key)
             session.add(LookupAlias(value_id=target.id, alias=t.label, lang=t.lang))
     source.status = LookupStatus.deprecated
     source.superseded_by_id = target.id
