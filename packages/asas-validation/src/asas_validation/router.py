@@ -26,12 +26,15 @@ def _serialize(rules: list[Rule]) -> list[dict]:
     ]
 
 
-def _etag() -> str:
+def _etag(rules: list[Rule]) -> str:
     # Weak ETag (W/"…") on purpose: compression proxies (e.g. Render's edge) downgrade
     # strong ETags to weak on gzipped responses, so a strong tag never round-trips —
     # the client echoes W/"…" and revalidation always misses. Emitting the weak form
     # makes the round trip exact (the lookups module's ETag convention).
-    blob = json.dumps(_serialize(list(declared_rules())), sort_keys=True)
+    # Hashed over the rules actually being served, not the full catalog: an ETag
+    # names a representation, and each ``entity`` filter is a different body — one
+    # catalog-wide tag would 304 entity B's request against entity A's cached rules.
+    blob = json.dumps(_serialize(rules), sort_keys=True)
     return 'W/"' + hashlib.md5(blob.encode()).hexdigest() + '"'
 
 
@@ -48,11 +51,11 @@ def build_router() -> APIRouter:
         if_none_match: Optional[str] = Header(default=None),
     ):
         """Return the validation rules, optionally filtered to one ``entity``."""
-        etag = _etag()
+        rules = rules_for(entity) if entity else list(declared_rules())
+        etag = _etag(rules)
         if if_none_match == etag:
             return Response(status_code=304, headers={"ETag": etag})
         response.headers["ETag"] = etag
-        rules = rules_for(entity) if entity else list(declared_rules())
         return _serialize(rules)
 
     return router

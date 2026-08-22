@@ -77,3 +77,35 @@ def test_rules_endpoint_serves_declared_set_with_etag():
     # a different declared set must produce a different ETag (no stale 304s across deploys)
     declare_rules((Rule("m", "not_future", ("dob",), "No future dob.", "m.dob_future"),))
     assert client.get("/validation/rules", headers={"If-None-Match": etag}).status_code == 200
+
+
+def test_rules_etag_varies_with_entity_filter():
+    """The ETag names the representation being served: each entity filter is
+    a different body, so a tag minted for the full catalog (or entity A)
+    must not 304 entity B's request."""
+    declare_rules(
+        (
+            Rule("m", "not_future", ("dob",), "No future dob.", "m.dob_future"),
+            Rule("p", "order", ("start", "end"), "Order.", "p.order"),
+        )
+    )
+    client = _client()
+    full_tag = client.get("/validation/rules").headers["ETag"]
+    m_resp = client.get("/validation/rules", params={"entity": "m"})
+    m_tag = m_resp.headers["ETag"]
+    assert m_tag != full_tag
+
+    # entity p against m's tag: full body, not a 304 of the wrong rule set
+    p_resp = client.get(
+        "/validation/rules", params={"entity": "p"}, headers={"If-None-Match": m_tag}
+    )
+    assert p_resp.status_code == 200
+    assert [r["code"] for r in p_resp.json()] == ["p.order"]
+
+    # same filter still revalidates
+    assert (
+        client.get(
+            "/validation/rules", params={"entity": "m"}, headers={"If-None-Match": m_tag}
+        ).status_code
+        == 304
+    )
