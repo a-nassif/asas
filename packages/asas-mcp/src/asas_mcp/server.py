@@ -21,8 +21,11 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable, List, Optional
 
+import json
+
 import anyio
 import mcp.types as types
+from mcp.shared.exceptions import McpError
 from pydantic import AnyHttpUrl
 from mcp.server.auth.middleware.auth_context import (
     AuthContextMiddleware,
@@ -127,6 +130,11 @@ def build_mcp_app(
         if isinstance(result, dict):
             # SDK normalizes: structuredContent + the JSON serialized as text.
             return result
+        if not isinstance(result, str):
+            # ToolRunner is typed Any: a void write tool returning None (or a
+            # list/number) must not surface a pydantic validation dump for
+            # TextContent as the tool's isError text — normalize instead.
+            result = "" if result is None else json.dumps(result, default=str)
         return [types.TextContent(type="text", text=result)]
 
     prompt_defs = {p.name: p for p in (prompts or [])}
@@ -154,7 +162,27 @@ def build_mcp_app(
         ) -> types.GetPromptResult:
             prompt = prompt_defs.get(prompt_name)
             if prompt is None:
-                raise ValueError(f"Unknown prompt '{prompt_name}'")
+                # A bare ValueError lands in the SDK's generic handler as
+                # JSON-RPC error code 0 — not a valid code at all; the spec
+                # wants Invalid params (-32602) for an unknown prompt name.
+                raise McpError(
+                    types.ErrorData(
+                        code=types.INVALID_PARAMS,
+                        message=f"Unknown prompt '{prompt_name}'",
+                    )
+                )
+            missing = [
+                a.name for a in prompt.arguments if a.required and a.name not in (arguments or {})
+            ]
+            if missing:
+                # prompts/list advertises these as required — accepting the
+                # call anyway silently renders a different prompt.
+                raise McpError(
+                    types.ErrorData(
+                        code=types.INVALID_PARAMS,
+                        message=f"Missing required arguments: {', '.join(missing)}",
+                    )
+                )
             return types.GetPromptResult(
                 description=prompt.description,
                 messages=[

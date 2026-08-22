@@ -28,6 +28,17 @@ _TOOLS = [
         read_only=False,
         idempotent=False,
     ),
+    MCPToolDef(
+        name="void_thing",
+        description="A write tool with no return value.",
+        input_schema={"type": "object", "properties": {}},
+        read_only=False,
+    ),
+    MCPToolDef(
+        name="list_thing",
+        description="Returns a list.",
+        input_schema={"type": "object", "properties": {}},
+    ),
 ]
 
 
@@ -36,6 +47,10 @@ def _run_tool(token, name, arguments):
         return f"echo:{arguments.get('text', '')} token={token}"
     if name == "write_thing":
         return {"ok": True, "wrote": 1}
+    if name == "void_thing":
+        return None
+    if name == "list_thing":
+        return ["a", 1]
     raise ValueError(f"unknown tool {name}")
 
 
@@ -150,3 +165,42 @@ def test_tool_error_is_reported_not_raised():
             client, "tools/call", {"name": "nope", "arguments": {}}
         ).json()["result"]
         assert result.get("isError") is True
+
+
+def test_unknown_prompt_is_invalid_params_not_code_zero():
+    """The spec wants -32602 (Invalid params) for an unknown prompt name; a
+    bare ValueError surfaced as JSON-RPC error code 0 — not a valid code."""
+    with _client() as client:
+        resp = _rpc(client, "prompts/get", {"name": "nope"}).json()
+        assert resp["error"]["code"] == -32602
+        assert "nope" in resp["error"]["message"]
+
+
+def test_missing_required_prompt_argument_is_invalid_params():
+    """prompts/list advertises `who` as required; accepting a call without it
+    silently rendered a different prompt."""
+    with _client() as client:
+        resp = _rpc(client, "prompts/get", {"name": "greet"}).json()
+        assert resp["error"]["code"] == -32602
+        assert "who" in resp["error"]["message"]
+        # with the argument present it renders as before
+        ok = _rpc(
+            client, "prompts/get", {"name": "greet", "arguments": {"who": "asas"}}, id=2
+        ).json()["result"]
+        assert ok["messages"][0]["content"]["text"] == "Say hello to asas"
+
+
+def test_non_str_tool_results_are_normalized_not_pydantic_dumps():
+    """ToolRunner is typed Any: a void write tool returning None (or a list)
+    must yield honest text content, not an isError pydantic validation dump."""
+    with _client() as client:
+        result = _rpc(
+            client, "tools/call", {"name": "void_thing", "arguments": {}}
+        ).json()["result"]
+        assert not result.get("isError", False)
+        assert result["content"] == [] or result["content"][0]["text"] == ""
+        result = _rpc(
+            client, "tools/call", {"name": "list_thing", "arguments": {}}, id=2
+        ).json()["result"]
+        assert not result.get("isError", False)
+        assert result["content"][0]["text"] == '["a", 1]'
