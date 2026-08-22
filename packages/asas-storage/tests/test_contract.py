@@ -138,6 +138,39 @@ def test_traversal_keys_are_rejected(store):
     store.delete("../escape.txt")  # no-op, no error
 
 
+def test_delete_of_directory_shaped_key_is_a_noop(store):
+    """A key that names a prefix, not an object, is 'missing' on every
+    backend — LocalStorage must not leak an IsADirectoryError where the
+    bucket backends no-op."""
+    store.put("orgs/1/documents/2/a.txt", b"x")
+    store.delete("orgs/1/documents")  # no-op, no error
+    assert store.exists("orgs/1/documents/2/a.txt")
+
+
+def test_control_character_keys_are_rejected(store):
+    """A NUL (or any control char) must get the contract's answers — bool /
+    None / no-op / FileNotFoundError — not a pathlib ValueError."""
+    for key in ("orgs/1/a\x00.txt", "orgs/1/a\n.txt"):
+        with pytest.raises(ValueError):
+            store.put(key, b"x")
+        assert not store.exists(key)
+        assert store.stat(key) is None
+        store.delete(key)  # no-op, no error
+        with pytest.raises(FileNotFoundError):
+            store.get(key)
+
+
+def test_hostile_content_type_is_dropped_not_raised(store):
+    """content_type is best-effort by contract; a client-controlled value
+    with CR/LF must be dropped, not raise out of the SDK's header
+    validation as a 500 on the upload path."""
+    key = "orgs/1/documents/2/h.bin"
+    store.put(key, b"x", content_type="text/plain\r\nx-injected: 1")
+    assert store.get(key) == b"x"
+    stat = store.stat(key)
+    assert stat is not None and stat.content_type != "text/plain\r\nx-injected: 1"
+
+
 def test_fetch_returns_stat_and_bytes_in_one_call(store):
     """fetch() is the serving hot path: stat + stream from a single backend
     call — one GetObject on S3 instead of Head+Get."""
@@ -163,6 +196,11 @@ def test_safe_filename_flattens_exotic_characters():
     assert safe_filename("données_2025.csv") == "donn_es_2025.csv"
     assert safe_filename("\u202f") == "_"  # a lone exotic char still yields a key
     assert safe_filename("") == "file"  # empty basename -> placeholder
+    # "." survives the charset filter \u2014 a file named "." or ".." must not
+    # come back as a segment valid_key rejects.
+    assert safe_filename(".") == "file"
+    assert safe_filename("..") == "file"
+    assert safe_filename(" .. ") == "file"
 
 
 def test_fetch_range_serves_http_range_semantics(store):

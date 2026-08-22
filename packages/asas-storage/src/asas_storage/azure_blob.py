@@ -27,7 +27,12 @@ from __future__ import annotations
 
 from typing import Iterator, List, Optional, Tuple
 
-from .base import FileStat, RangeNotSatisfiable, valid_key
+from .base import (
+    FileStat,
+    RangeNotSatisfiable,
+    clean_content_type as _clean_content_type,
+    valid_key,
+)
 
 # On Azure each downloaded chunk is a separate ranged GET (unlike S3, where
 # chunks slice one streaming response), so this is deliberately larger than
@@ -52,23 +57,6 @@ _CLIENT_KWARGS = dict(
     initial_backoff=1,
     increment_base=2,
 )
-
-
-def _clean_content_type(value: Optional[str]) -> Optional[str]:
-    """Best-effort normalisation of a caller-supplied content type.
-
-    The value travels verbatim into an Azure request header, where hosts may
-    source it from a client-controlled multipart part header: a CR/LF makes
-    azure-core fail the request after its full retry schedule, and a trailing
-    space breaks shared-key signing (403). Content type is best-effort by
-    contract, so anything unheaderable is dropped rather than raised.
-    """
-    if not value:
-        return None
-    value = value.strip()
-    if not value or any(not (" " <= ch <= "~") for ch in value):
-        return None
-    return value
 
 
 def _to_stat(props) -> FileStat:
