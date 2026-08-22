@@ -124,3 +124,43 @@ def test_create_value_dedups_aliases(client):
     )
     assert resp.status_code == 201, resp.text
     assert set(resp.json()["aliases"]) == {"bar", "Baz"}
+
+
+def test_merge_dedups_same_label_across_langs(client):
+    client.post("/admin/lookup-types", json={"key": "widget", "name": "Widget"})
+    client.post(
+        "/admin/lookups/widget",
+        json={"code": "keep", "translations": [{"lang": "en", "label": "Keep"}]},
+    )
+    # same label in two languages — one alias row on the target, not two
+    client.post(
+        "/admin/lookups/widget",
+        json={
+            "code": "dup",
+            "translations": [
+                {"lang": "en", "label": "Taxi"},
+                {"lang": "fr", "label": "Taxi"},
+            ],
+        },
+    )
+    resp = client.post("/admin/lookups/widget/dup/merge", json={"into": "keep"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["aliases"] == ["Taxi"]
+
+
+def test_remove_alias_matches_like_add(client):
+    client.post("/admin/lookup-types", json={"key": "widget", "name": "Widget"})
+    client.post(
+        "/admin/lookups/widget",
+        json={"code": "gear", "translations": [{"lang": "en", "label": "Gear"}]},
+    )
+    client.post("/admin/lookups/widget/gear/aliases", json={"alias": "Baz"})
+    # add of 'baz' no-ops (case-insensitive present check), so remove of 'baz'
+    # must hit the same row — otherwise 'Baz' is unremovable by that spelling
+    resp = client.delete("/admin/lookups/widget/gear/aliases/baz")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["aliases"] == []
+    # removing an absent alias stays a 200 no-op
+    assert (
+        client.delete("/admin/lookups/widget/gear/aliases/baz").status_code == 200
+    )
