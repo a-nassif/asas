@@ -34,7 +34,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from fastapi import HTTPException
 
-__version__ = "0.10.1"
+__version__ = "0.10.2"
 
 __all__ = [
     "Rule",
@@ -82,14 +82,33 @@ _buckets: Dict[Tuple[str, str], Tuple[float, float]] = {}  # (tokens, stamp)
 _enabled = True
 _clock: Callable[[], float] = time.monotonic
 
+# configure()'s "clock not passed" sentinel: a plain time.monotonic default
+# would silently revert an injected clock on every kill-switch toggle,
+# comparing live bucket stamps against a different epoch (= full refill for
+# every key).
+_CLOCK_UNSET: Callable[[], float] = lambda: 0.0  # noqa: E731 — identity sentinel
 
-def configure(*, enabled: bool = True, clock: Callable[[], float] = time.monotonic) -> None:
+
+def configure(
+    *, enabled: bool = True, clock: Optional[Callable[[], float]] = _CLOCK_UNSET
+) -> None:
+    """Kill switch + injectable clock. ``clock`` is only touched when passed:
+    ``configure(enabled=False)`` must not reset a previously injected clock.
+    Pass ``clock=None`` to restore the default ``time.monotonic``."""
     global _enabled, _clock
     _enabled = enabled
-    _clock = clock
+    if clock is not _CLOCK_UNSET:
+        _clock = clock if clock is not None else time.monotonic
 
 
 def declare(rule: Rule) -> None:
+    """Register a rule. Fails loud at boot on values the engine cannot
+    enforce: a non-positive window has no defined refill rate, and a
+    negative limit means nothing (``limit=0`` is legal — a hard block)."""
+    if rule.window_seconds <= 0:
+        raise ValueError(f"rule {rule.name!r}: window_seconds must be > 0")
+    if rule.limit < 0:
+        raise ValueError(f"rule {rule.name!r}: limit must be >= 0")
     _rules[rule.name] = rule
 
 
@@ -118,9 +137,16 @@ def parse_overrides(raw: str) -> Dict[str, Tuple[int, float]]:
         try:
             name, spec = part.split("=", 1)
             count, window = spec.split("/", 1)
-            overrides[name.strip()] = (int(count), float(window))
+            parsed = (int(count), float(window))
         except ValueError:
             log.warning("rate-limit override entry %r is malformed; ignored", part)
+            continue
+        # The same bounds declare() enforces — an entry declare() would
+        # reject must not take the API down at boot either.
+        if parsed[1] <= 0 or parsed[0] < 0:
+            log.warning("rate-limit override entry %r is malformed; ignored", part)
+            continue
+        overrides[name.strip()] = parsed
     return overrides
 
 
@@ -130,7 +156,11 @@ def _prune_locked(now: float) -> None:
     for bkey in list(_buckets):
         rule = _rules.get(bkey[0])
         tokens, stamp = _buckets[bkey]
-        if rule is None or now - stamp > rule.window_seconds:
+        # Only a bucket whose refill has reached capacity is equivalent to an
+        # absent one. "Stale by one window" is NOT that when burst > limit: a
+        # window refills `limit` tokens, so deleting the bucket would hand a
+        # spent key its full burst back.
+        if rule is None or tokens + (now - stamp) * rule.refill_per_second >= rule.capacity:
             del _buckets[bkey]
 
 
@@ -142,6 +172,11 @@ def allow(rule_name: str, key: str) -> Tuple[bool, float]:
     rule = _rules.get(rule_name)
     if rule is None:
         return True, 0.0
+    if rule.limit <= 0 or rule.capacity <= 0:
+        # A hard block ("this=0/60" in a deployment override): deny without
+        # touching the refill math, whose rate is 0 — the division below
+        # would otherwise turn every request into a ZeroDivisionError 500.
+        return False, rule.window_seconds
     now = _clock()
     with _lock:
         tokens, stamp = _buckets.get((rule_name, key), (float(rule.capacity), now))

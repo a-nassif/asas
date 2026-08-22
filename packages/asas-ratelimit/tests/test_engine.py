@@ -115,3 +115,74 @@ def test_parse_overrides_accepts_good_and_skips_malformed():
 
 def test_parse_overrides_empty_string():
     assert ratelimit.parse_overrides("") == {}
+
+
+def test_zero_limit_rule_hard_blocks_without_crashing():
+    """limit=0 is the natural deployment-override spelling of "block this
+    endpoint" — it must deny with a Retry-After, not ZeroDivisionError."""
+    ratelimit.declare(ratelimit.Rule(name="t.blocked", limit=0, window_seconds=60))
+    allowed, retry = ratelimit.allow("t.blocked", "k")
+    assert not allowed and retry > 0
+    with pytest.raises(HTTPException) as exc:
+        ratelimit.check("t.blocked", "k")
+    assert exc.value.status_code == 429
+
+
+def test_zero_burst_rule_hard_blocks():
+    ratelimit.declare(
+        ratelimit.Rule(name="t.noburst", limit=5, window_seconds=60, burst=0)
+    )
+    assert not ratelimit.allow("t.noburst", "k")[0]
+
+
+def test_declare_rejects_unenforceable_rules():
+    """window<=0 has no refill rate (Rule.refill_per_second divides by it) —
+    fail loud at boot, matching the package's assert-names-at-boot advice."""
+    with pytest.raises(ValueError):
+        ratelimit.declare(ratelimit.Rule(name="t.w0", limit=5, window_seconds=0))
+    with pytest.raises(ValueError):
+        ratelimit.declare(ratelimit.Rule(name="t.neg", limit=-1, window_seconds=60))
+    assert "t.w0" not in ratelimit.rules()
+
+
+def test_parse_overrides_skips_values_declare_rejects():
+    parsed = ratelimit.parse_overrides("block.me=0/60, w0=5/0, neg=-1/60")
+    assert parsed == {"block.me": (0, 60.0)}  # 0/60 is a legal hard block
+
+
+def test_kill_switch_toggle_preserves_injected_clock():
+    """configure(enabled=...) without a clock must not silently revert an
+    injected clock — that resets every live bucket's epoch, refilling all
+    keys (a limit bypass right after a kill-switch toggle)."""
+    ratelimit.declare(ratelimit.Rule(name="t.clock", limit=2, window_seconds=60))
+    now = [1000.0]
+    ratelimit.configure(enabled=True, clock=lambda: now[0])
+    key = uuid.uuid4().hex
+    assert ratelimit.allow("t.clock", key)[0]
+    assert ratelimit.allow("t.clock", key)[0]
+    assert not ratelimit.allow("t.clock", key)[0]
+    ratelimit.configure(enabled=False)  # kill switch on...
+    ratelimit.configure(enabled=True)  # ...and off — clock must survive
+    assert not ratelimit.allow("t.clock", key)[0]  # still exhausted
+    ratelimit.configure(enabled=True, clock=None)  # explicit reset to monotonic
+    assert ratelimit._clock is not None
+
+
+def test_prune_does_not_refund_burst_above_limit(monkeypatch):
+    """A bucket stale by one window has refilled `limit` tokens, not
+    `capacity` — pruning it would hand a spent key its full burst back."""
+    monkeypatch.setattr(ratelimit, "_MAX_BUCKETS", 1)
+    ratelimit.declare(
+        ratelimit.Rule(name="t.burstprune", limit=2, window_seconds=10, burst=6)
+    )
+    now = [0.0]
+    ratelimit.configure(enabled=True, clock=lambda: now[0])
+    for _ in range(6):
+        assert ratelimit.allow("t.burstprune", "victim")[0]
+    assert not ratelimit.allow("t.burstprune", "victim")[0]  # burst spent
+    now[0] += 11.0  # one window later: refill = limit (2), NOT capacity (6)
+    ratelimit.allow("t.burstprune", "other")  # push past bound -> prune runs
+    assert ("t.burstprune", "victim") in ratelimit._buckets  # not refunded
+    assert ratelimit.allow("t.burstprune", "victim")[0]
+    assert ratelimit.allow("t.burstprune", "victim")[0]
+    assert not ratelimit.allow("t.burstprune", "victim")[0]  # ~2 tokens, not 6
