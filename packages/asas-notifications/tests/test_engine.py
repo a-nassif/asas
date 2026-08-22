@@ -186,3 +186,21 @@ def test_router_factory_serves_the_feed(migrated, session, kind):
     nid = feed["items"][0]["id"]
     assert client.post(f"/me/notifications/{nid}/read").status_code == 200
     assert client.get("/me/notifications").json()["unread_count"] == 0
+
+
+def test_record_without_entity_type_fails_loud_not_unfiltered(session, kind):
+    """A record whose entity_type is missing used to skip the visibility
+    filter silently — every recipient got the notification, including ones
+    the filter would have dropped. "Must never leak a private record" means
+    the producer bug fails loud instead."""
+    notifications.configure_recipient_filter(
+        lambda s, ids, entity_type, record: [u for u in ids if u != 3]
+    )
+    with pytest.raises(ValueError, match="entity_type"):
+        emit(session, kind, [1, 3], record=object(), entity_id=9)
+    assert session.exec(select(Notification)).all() == []
+    # without a configured filter the single-host default still applies:
+    # record alone is fine, nothing to run
+    notifications.configure_recipient_filter(None)
+    rows = emit(session, kind, [1, 3], record=object(), entity_id=9)
+    assert [n.user_id for n in rows] == [1, 3]
