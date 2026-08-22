@@ -180,7 +180,16 @@ def notify(
     ids = list(dict.fromkeys(u for u in recipients if u is not None))
     if actor_user_id is not None:
         ids = [u for u in ids if u != actor_user_id]
-    if record is not None and entity_type and _recipient_filter is not None:
+    if record is not None and _recipient_filter is not None:
+        # "must never leak a private record" is only enforceable when the
+        # filter can actually run. A record without its entity_type used to
+        # skip filtering silently — the wrong default for a rule stated as
+        # "never": fail loud at the producer instead.
+        if not entity_type:
+            raise ValueError(
+                "notify(record=...) requires entity_type — the visibility "
+                "filter cannot run without it"
+            )
         ids = list(_recipient_filter(session, ids, entity_type, record))
     if not ids:
         return []
