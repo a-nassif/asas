@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Iterator, Optional, Tuple
 
-from .base import FileStat, RangeNotSatisfiable, valid_key
+from .base import FileStat, RangeNotSatisfiable, clean_content_type, valid_key
 
 _CHUNK = 64 * 1024
 _BATCH = 1000  # delete_objects hard limit
@@ -70,6 +70,10 @@ class S3Storage:
     def put(self, key: str, data: bytes, content_type: Optional[str] = None) -> None:
         if not valid_key(key):
             raise ValueError(f"Invalid storage key: {key!r}")
+        # Same hygiene as the Azure backend: an unheaderable caller-supplied
+        # value (CR/LF from a client-controlled multipart header) must be
+        # dropped, not raise out of urllib3's header validation as a 500.
+        content_type = clean_content_type(content_type)
         extra = {"ContentType": content_type} if content_type else {}
         self._client.put_object(Bucket=self._bucket, Key=key, Body=data, **extra)
 
@@ -134,8 +138,22 @@ class S3Storage:
                 raise RangeNotSatisfiable(f"bytes={start}-{end}") from exc
             raise
         # Ranged GetObject's ContentLength is the RANGE length; the total rides
-        # ContentRange ("bytes 0-99/1234").
-        total = int(obj["ContentRange"].rpartition("/")[2])
+        # ContentRange ("bytes 0-99/1234"). RFC 9110 lets a server ignore
+        # ``Range`` and answer 200 with no ContentRange (AWS does this for
+        # zero-byte objects) — ContentLength is the total then.
+        content_range = obj.get("ContentRange")
+        total = (
+            int(content_range.rpartition("/")[2])
+            if content_range
+            else obj["ContentLength"]
+        )
+        # ``start == total`` is unsatisfiable per RFC 9110 §14.1.1, and the
+        # InvalidRange mapping above is not enough to enforce it: AWS 416s
+        # there, but S3-compatible endpoints (the same emulator class that
+        # motivated the Azure check, TEAMY-700) can answer an empty 206.
+        # Decide the boundary ourselves — Local and Azure already do.
+        if start >= total:
+            raise RangeNotSatisfiable(f"bytes={start}-{end} of {total}")
         stat = FileStat(size=total, content_type=obj.get("ContentType"))
         return stat, obj["Body"].iter_chunks(_CHUNK)
 

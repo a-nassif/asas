@@ -40,13 +40,40 @@ def safe_filename(name: str) -> str:
     keeps the original. Uploaders prefix keys with a uuid, so flattening
     can't collide."""
     cleaned = "".join(c if c in _SAFE_NAME_CHARS else "_" for c in name)
-    return cleaned.strip() or "file"
+    cleaned = cleaned.strip()
+    if not cleaned or cleaned in (".", ".."):
+        # "." survives the charset filter, so a file literally named "." or
+        # ".." would otherwise come back as a segment valid_key rejects.
+        return "file"
+    return cleaned
+
+
+def clean_content_type(value: Optional[str]) -> Optional[str]:
+    """Best-effort normalisation of a caller-supplied content type.
+
+    The value travels verbatim into a backend request header, where hosts may
+    source it from a client-controlled multipart part header: a CR/LF makes
+    the SDK fail the request (azure-core after its full retry schedule,
+    urllib3 with an unhandled ValueError), and a trailing space breaks Azure
+    shared-key signing (403). Content type is best-effort by contract, so
+    anything unheaderable is dropped rather than raised.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    if not value or any(not (" " <= ch <= "~") for ch in value):
+        return None
+    return value
 
 
 def valid_key(key: str) -> bool:
-    """A safe relative key: no absolute paths, no empty/`.`/`..` segments.
-    Backends share this so traversal behaves identically on disk and bucket."""
+    """A safe relative key: no absolute paths, no empty/`.`/`..` segments, no
+    control characters (a NUL makes pathlib raise instead of the contract's
+    bool/None/no-op answers). Backends share this so traversal behaves
+    identically on disk and bucket."""
     if not key or key.startswith("/") or "\\" in key:
+        return False
+    if any(ch < " " or ch == "\x7f" for ch in key):
         return False
     return all(seg not in ("", ".", "..") for seg in key.split("/"))
 
