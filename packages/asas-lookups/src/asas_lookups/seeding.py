@@ -184,7 +184,7 @@ _ISSUE_CATEGORY = [
 ]
 
 
-def _ensure_type(session: Session, **kwargs) -> LookupType:
+def ensure_type(session: Session, **kwargs) -> LookupType:
     t = session.exec(
         select(LookupType).where(LookupType.key == kwargs["key"])
     ).first()
@@ -197,7 +197,7 @@ def _ensure_type(session: Session, **kwargs) -> LookupType:
     return t
 
 
-def _ensure_value(
+def ensure_value(
     session: Session,
     type_id: int,
     code: str,
@@ -260,7 +260,7 @@ def _ensure_value(
     return True
 
 
-def _bump_version_if(session: Session, type_: LookupType, added: int) -> None:
+def bump_version_if(session: Session, type_: LookupType, added: int) -> None:
     """Bump the type version when seeding inserted new values, so the read-API ETag
     (keyed on the version) changes and clients don't serve a stale cached list."""
     if added:
@@ -271,7 +271,7 @@ def _bump_version_if(session: Session, type_: LookupType, added: int) -> None:
 
 def seed_lookups(session: Session) -> None:
     # --- Closed lists (curated order) ---
-    salutation = _ensure_type(
+    salutation = ensure_type(
         session,
         key="salutation",
         name="Salutation",
@@ -279,7 +279,7 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(
+        ensure_value(
             session, salutation.id, code, [("en", en), ("ar", ar)], sort_order=i
         )
         for i, (code, en, ar) in enumerate(_SALUTATION)
@@ -297,9 +297,9 @@ def seed_lookups(session: Session) -> None:
             flagged += 1
     if flagged:
         session.commit()
-    _bump_version_if(session, salutation, added + flagged)
+    bump_version_if(session, salutation, added + flagged)
 
-    gender = _ensure_type(
+    gender = ensure_type(
         session,
         key="gender",
         name="Gender",
@@ -307,12 +307,12 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(session, gender.id, code, [("en", en), ("ar", ar)], sort_order=i)
+        ensure_value(session, gender.id, code, [("en", en), ("ar", ar)], sort_order=i)
         for i, (code, en, ar) in enumerate(_GENDER)
     )
-    _bump_version_if(session, gender, added)
+    bump_version_if(session, gender, added)
 
-    marital = _ensure_type(
+    marital = ensure_type(
         session,
         key="marital_status",
         name="Marital status",
@@ -320,12 +320,12 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(session, marital.id, code, [("en", en), ("ar", ar)], sort_order=i)
+        ensure_value(session, marital.id, code, [("en", en), ("ar", ar)], sort_order=i)
         for i, (code, en, ar) in enumerate(_MARITAL)
     )
-    _bump_version_if(session, marital, added)
+    bump_version_if(session, marital, added)
 
-    team_category = _ensure_type(
+    team_category = ensure_type(
         session,
         key="team_category",
         name="Team category",
@@ -333,12 +333,12 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(
+        ensure_value(
             session, team_category.id, code, [("en", en), ("ar", ar)], sort_order=i
         )
         for i, (code, en, ar) in enumerate(_TEAM_CATEGORY)
     )
-    _bump_version_if(session, team_category, added)
+    bump_version_if(session, team_category, added)
 
     # Org/edu open types (WXL-182): values are user-created (get_or_create on write,
     # backfilled from historical free text by the WXL-183 migration) — only the type
@@ -352,7 +352,7 @@ def seed_lookups(session: Session) -> None:
         ("awarding_body", "Awarding body"),
         ("training_provider", "Training provider"),
     ):
-        _ensure_type(
+        ensure_type(
             session,
             key=key,
             name=name,
@@ -361,7 +361,7 @@ def seed_lookups(session: Session) -> None:
             default_sort=SortMode.label,
         )
 
-    currency = _ensure_type(
+    currency = ensure_type(
         session,
         key="currency",
         name="Currency",
@@ -369,14 +369,14 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(
+        ensure_value(
             session, currency.id, code, [("en", en), ("ar", ar)], sort_order=i
         )
         for i, (code, en, ar) in enumerate(_CURRENCY)
     )
-    _bump_version_if(session, currency, added)
+    bump_version_if(session, currency, added)
 
-    project_health = _ensure_type(
+    project_health = ensure_type(
         session,
         key="project_health",
         name="Project health",
@@ -384,7 +384,7 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(
+        ensure_value(
             session,
             project_health.id,
             code,
@@ -394,9 +394,9 @@ def seed_lookups(session: Session) -> None:
         )
         for i, (code, en, ar, tone) in enumerate(_PROJECT_HEALTH)
     )
-    _bump_version_if(session, project_health, added)
+    bump_version_if(session, project_health, added)
 
-    work_item_status = _ensure_type(
+    work_item_status = ensure_type(
         session,
         key="work_item_status",
         name="Work item status",
@@ -404,7 +404,7 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(
+        ensure_value(
             session,
             work_item_status.id,
             code,
@@ -414,9 +414,9 @@ def seed_lookups(session: Session) -> None:
         )
         for i, (code, en, ar, category, tone) in enumerate(_WORK_ITEM_STATUS)
     )
-    _bump_version_if(session, work_item_status, added)
+    bump_version_if(session, work_item_status, added)
 
-    work_item_type = _ensure_type(
+    work_item_type = ensure_type(
         session,
         key="work_item_type",
         name="Work item type",
@@ -424,12 +424,12 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(
+        ensure_value(
             session, work_item_type.id, code, [("en", en), ("ar", ar)], sort_order=i
         )
         for i, (code, en, ar) in enumerate(_WORK_ITEM_TYPE)
     )
-    _bump_version_if(session, work_item_type, added)
+    bump_version_if(session, work_item_type, added)
 
     for type_key, type_name, values in (
         ("risk_category", "Risk category", _RISK_CATEGORY),
@@ -437,7 +437,7 @@ def seed_lookups(session: Session) -> None:
         ("social_platform", "Social platform", _SOCIAL_PLATFORM),
         ("contact_relationship", "Contact relationship", _CONTACT_RELATIONSHIP),
     ):
-        lt = _ensure_type(
+        lt = ensure_type(
             session,
             key=type_key,
             name=type_name,
@@ -445,12 +445,12 @@ def seed_lookups(session: Session) -> None:
             default_sort=SortMode.sort_order,
         )
         added = sum(
-            _ensure_value(session, lt.id, code, [("en", en), ("ar", ar)], sort_order=i)
+            ensure_value(session, lt.id, code, [("en", en), ("ar", ar)], sort_order=i)
             for i, (code, en, ar) in enumerate(values)
         )
-        _bump_version_if(session, lt, added)
+        bump_version_if(session, lt, added)
 
-    contract_type = _ensure_type(
+    contract_type = ensure_type(
         session,
         key="contract_type",
         name="Contract Type",
@@ -458,7 +458,7 @@ def seed_lookups(session: Session) -> None:
         default_sort=SortMode.sort_order,
     )
     added = sum(
-        _ensure_value(
+        ensure_value(
             session,
             contract_type.id,
             code,
@@ -468,11 +468,11 @@ def seed_lookups(session: Session) -> None:
         )
         for i, (code, en, ar, aliases) in enumerate(_CONTRACT_TYPE)
     )
-    _bump_version_if(session, contract_type, added)
+    bump_version_if(session, contract_type, added)
 
     # Office locations (WXL-198) — closed, admin-managed via /admin/lookups; seeded
     # empty (each org defines its own offices). Backs member_contact.office_location_code.
-    _ensure_type(
+    ensure_type(
         session,
         key="office_location",
         name="Office location",
@@ -482,7 +482,7 @@ def seed_lookups(session: Session) -> None:
     )
 
     # --- Open lists (users add values via the app) ---
-    _ensure_type(
+    ensure_type(
         session,
         key="skill",
         name="Skill",
@@ -498,14 +498,14 @@ def seed_lookups(session: Session) -> None:
     # catalog at boot (idempotent) and this library never re-creates the type.
 
     # --- Countries & nationalities (alphabetical, ISO codes) ---
-    country = _ensure_type(
+    country = ensure_type(
         session,
         key="country",
         name="Country",
         code_system="ISO3166-1A2",
         default_sort=SortMode.label,
     )
-    nationality = _ensure_type(
+    nationality = ensure_type(
         session,
         key="nationality",
         name="Nationality",
@@ -515,7 +515,7 @@ def seed_lookups(session: Session) -> None:
     country_added = 0
     nationality_added = 0
     for c in COUNTRIES:
-        country_added += _ensure_value(
+        country_added += ensure_value(
             session,
             country.id,
             c["code"],
@@ -523,7 +523,7 @@ def seed_lookups(session: Session) -> None:
             aliases=c["aliases"],
             meta={"iso2": c["code"]},
         )
-        nationality_added += _ensure_value(
+        nationality_added += ensure_value(
             session,
             nationality.id,
             c["code"],
@@ -531,5 +531,5 @@ def seed_lookups(session: Session) -> None:
             aliases=c["aliases"],
             meta={"iso2": c["code"]},
         )
-    _bump_version_if(session, country, country_added)
-    _bump_version_if(session, nationality, nationality_added)
+    bump_version_if(session, country, country_added)
+    bump_version_if(session, nationality, nationality_added)
