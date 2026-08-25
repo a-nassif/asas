@@ -1,5 +1,6 @@
 """The migrate(engine) contract: fresh-create, adopt-by-stamp, idempotence."""
 
+import pytest
 import sqlalchemy as sa
 from alembic import command
 
@@ -54,3 +55,31 @@ def test_adopts_existing_tables(engine):
     # Adoption is not just a stamp — the post-baseline chain ran over the
     # adopted tables, so the host lands on the current schema.
     assert "archived_at" in {c["name"] for c in inspector.get_columns("notification")}
+
+
+def test_rejects_a_foreign_table_of_the_same_name(engine):
+    """A host that already owns an unrelated table called ``notification`` must get a
+    loud error, not a silent adoption.
+
+    Adoption keys on a table *name*, and a name is not an identity. Without this
+    guard asas-notifications stamps the baseline as applied, therefore skips it entirely —
+    leaving the baseline's sibling tables uncreated — and returns success, only
+    to fail much later at runtime with no way to repair by re-running.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "CREATE TABLE notification ("
+                "  id INTEGER PRIMARY KEY, candidate_id INTEGER, headline VARCHAR"
+                ")"
+            )
+        )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        asas_notifications.migrate(engine)
+
+    message = str(excinfo.value)
+    assert "notification" in message
+    assert "asas-notifications" in message
+    # Nothing was stamped, so a later run against a corrected database still works.
+    assert not sa.inspect(engine).has_table(VERSION_TABLE)

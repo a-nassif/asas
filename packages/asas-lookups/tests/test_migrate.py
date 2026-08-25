@@ -1,5 +1,6 @@
 """The migrate(engine) contract: fresh-create, adopt-by-stamp, idempotence."""
 
+import pytest
 import sqlalchemy as sa
 from sqlmodel import Session, SQLModel
 
@@ -53,3 +54,31 @@ def test_adopts_existing_tables(engine):
     # Adopted schema is usable as-is.
     with Session(engine) as s:
         asas_lookups.seed(s)
+
+
+def test_rejects_a_foreign_table_of_the_same_name(engine):
+    """A host that already owns an unrelated table called ``lookup_type`` must get a
+    loud error, not a silent adoption.
+
+    Adoption keys on a table *name*, and a name is not an identity. Without this
+    guard asas-lookups stamps the baseline as applied, therefore skips it entirely —
+    leaving the baseline's sibling tables uncreated — and returns success, only
+    to fail much later at runtime with no way to repair by re-running.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "CREATE TABLE lookup_type ("
+                "  id INTEGER PRIMARY KEY, candidate_id INTEGER, headline VARCHAR"
+                ")"
+            )
+        )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        asas_lookups.migrate(engine)
+
+    message = str(excinfo.value)
+    assert "lookup_type" in message
+    assert "asas-lookups" in message
+    # Nothing was stamped, so a later run against a corrected database still works.
+    assert not sa.inspect(engine).has_table(VERSION_TABLE)
