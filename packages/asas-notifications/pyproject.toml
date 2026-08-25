@@ -8,7 +8,14 @@ version = "0.11.1"
 description = "Asas notifications module: a generic notification engine — registered kinds, transactional emits with visibility filtering and unread coalescing, an in-app feed API, and a duplicate-safe per-channel delivery outbox with pluggable adapters."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "LicenseRef-Proprietary"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+]
 dependencies = [
     "fastapi>=0.110,<1",
     "sqlmodel>=0.0.21",

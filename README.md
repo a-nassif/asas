@@ -62,3 +62,18 @@ asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@v0.1.0#subdirectory=
 Each package is standalone: `cd packages/<name>`, `pip install -e '.[dev]'`, `pytest -q`.
 Set `TEST_DATABASE_URL=postgresql+psycopg2://…` to run a package's suite on Postgres
 (unset ⇒ SQLite), mirroring Teamy's convention.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE). Every package
+declares `License-Expression: Apache-2.0` and ships both files inside its wheel,
+so an SBOM or license scan reads the same answer from the repo and from an
+installed artefact.
+
+All runtime dependencies are permissive (MIT or BSD). The one copyleft component
+anywhere in the tree is `psycopg2-binary` (LGPL with exceptions), a **test-only
+extra** — it is imported to run the Postgres suite, never vendored or
+redistributed, so its terms do not reach this code.
+
+Asas is licensed separately from, and more permissively than, the products built
+on it.

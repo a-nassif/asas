@@ -8,7 +8,14 @@ version = "0.10.2"
 description = "Asas validation module: declarative temporal/cross-field rules evaluated on both create and update, with a FastAPI endpoint serving the rule set so clients enforce the same constraints."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "LicenseRef-Proprietary"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+]
 dependencies = [
     "fastapi>=0.110,<1",
 ]

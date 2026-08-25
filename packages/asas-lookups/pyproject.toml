@@ -8,7 +8,14 @@ version = "0.10.3"
 description = "Asas reference-data / lookups module: generic bilingual lookup types, values, translations and aliases with a FastAPI read + admin API."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "LicenseRef-Proprietary"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+]
 dependencies = [
     "fastapi>=0.110,<1",
     "sqlmodel>=0.0.16",

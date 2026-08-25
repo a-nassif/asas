@@ -8,7 +8,14 @@ version = "0.12.0"
 description = "Asas access-control module: configuration-driven field/action permissions and record visibility over one principal layer (roles, groups, host-registered relationship resolvers), with a package-owned Alembic chain."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "LicenseRef-Proprietary"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+]
 dependencies = [
     "sqlmodel>=0.0.21",
     "alembic>=1.13",
