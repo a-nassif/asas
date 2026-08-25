@@ -27,6 +27,19 @@ _BASELINE = "0001"
 _SENTINEL_TABLE = "process_definition"
 # Columns the baseline creates on the sentinel. Baselines are frozen, so this
 # set is a constant; see _assert_adoptable.
+# Every table the baseline revision creates. Genuine adoption means the host's
+# own history created all of them; a subset is a partial schema, not an adopt.
+_BASELINE_TABLES = frozenset({
+    "info_request",
+    "node_assignee",
+    "node_decision",
+    "node_execution",
+    "process_binding",
+    "process_definition",
+    "process_instance",
+    "process_node",
+    "process_transition",
+})
 _SENTINEL_COLUMNS = frozenset({
     "id",
     "org_id",
@@ -53,16 +66,28 @@ def _config(engine: Engine) -> Config:
 def _assert_adoptable(inspector) -> None:
     """Guard the adopt path in :func:`migrate`.
 
-    Adoption keys on a table *name*, which is not an identity. A host that
-    already owns an unrelated table called ``process_definition`` would otherwise have us
-    stamp the baseline as applied and therefore **skip it entirely** — leaving
-    the baseline's other tables uncreated — and then fail at runtime, far from
-    the cause, with no error at migrate time and no way to repair by re-running.
+    Adoption keys on a table *name*, which is not an identity, and stamping is
+    irreversible in effect: it records the baseline as already applied, so the
+    baseline never runs and a re-run of ``migrate()`` cannot repair it. Both
+    checks below therefore have to pass *before* the stamp.
 
-    So require the baseline's own columns to be present before believing the
-    table is ours. Extra columns are fine (a later revision, or the host's own
-    additions); missing ones mean this is somebody else's table.
+    1. **Every baseline table must be present.** A sentinel that looks right
+       while its siblings are missing is a partial schema; stamping would leave
+       those tables uncreated forever, and the failure surfaces much later at
+       runtime, far from the cause.
+    2. **The sentinel must carry the baseline's columns.** Extra columns are
+       fine (a later revision, or the host's own); missing ones mean this is
+       somebody else's table that happens to share the name.
     """
+    absent = sorted(t for t in _BASELINE_TABLES if not inspector.has_table(t))
+    if absent:
+        raise RuntimeError(
+            f"asas-workflow cannot adopt the existing {_SENTINEL_TABLE!r} table: the "
+            f"baseline's other tables are missing {absent}. This database holds a "
+            f"partial asas-workflow schema; stamping it would record the baseline as "
+            f"applied and never create them. Restore or drop the partial schema "
+            f"and retry."
+        )
     actual = {c["name"] for c in inspector.get_columns(_SENTINEL_TABLE)}
     missing = _SENTINEL_COLUMNS - actual
     if missing:

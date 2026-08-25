@@ -16,7 +16,9 @@ pilot; that one docstring never was, so the oldest copy documented the opposite
 of what every host actually does.
 
 If this test fails, the fix is to apply your change to **all six** files — not
-to loosen the normalisation.
+to loosen the normalisation. The only thing that may join the normalised set is
+genuinely per-package *data* — the identity of the package and the shape of the
+schema it owns. Logic and prose must stay identical, which is the whole point.
 """
 
 import difflib
@@ -31,6 +33,7 @@ MIGRATES = sorted(ROOT.glob("packages/asas-*/src/asas_*/migrate.py"))
 # Everything below is legitimately per-package: the identity of the package and
 # the shape of the table it adopts. Anything else differing is drift.
 _COLUMNS_BLOCK = re.compile(r"_SENTINEL_COLUMNS = frozenset\(\{.*?\n\}\)", re.S)
+_TABLES_BLOCK = re.compile(r"_BASELINE_TABLES = frozenset\(\{.*?\n\}\)", re.S)
 
 
 def _package_of(path: pathlib.Path) -> str:
@@ -45,6 +48,7 @@ def normalise(path: pathlib.Path) -> str:
     module = dist.replace("-", "_")             # asas_lookups
 
     text = _COLUMNS_BLOCK.sub("_SENTINEL_COLUMNS = frozenset({<COLUMNS>})", text)
+    text = _TABLES_BLOCK.sub("_BASELINE_TABLES = frozenset({<TABLES>})", text)
     # Order matters: the module form is a substring of nothing, but the dist form
     # appears inside the version-table name, so replace the longer names first.
     text = text.replace(f"alembic_version_{module}", "alembic_version_<PKG>")

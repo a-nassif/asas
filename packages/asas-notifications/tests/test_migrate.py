@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from alembic import command
 
 import asas_notifications
-from asas_notifications.migrate import _BASELINE, VERSION_TABLE, _config
+from asas_notifications.migrate import _SENTINEL_COLUMNS, _SENTINEL_TABLE, _BASELINE, VERSION_TABLE, _config
 
 _TABLES = ("notification", "notification_delivery")
 
@@ -82,4 +82,28 @@ def test_rejects_a_foreign_table_of_the_same_name(engine):
     assert "notification" in message
     assert "asas-notifications" in message
     # Nothing was stamped, so a later run against a corrected database still works.
+    assert not sa.inspect(engine).has_table(VERSION_TABLE)
+
+
+def test_rejects_a_partial_baseline_schema(engine):
+    """Sentinel present and correctly shaped, a sibling baseline table missing.
+
+    Reported by CodeRabbit on asas#18 and reproduced before fixing: the sentinel
+    check alone passed, migrate() stamped the baseline as applied, and
+    'notification_delivery' was never created — silently, with the stamp meaning a re-run
+    could not repair it. Same failure class as the foreign-table case, one layer
+    down.
+    """
+    with engine.begin() as conn:
+        coldefs = ", ".join(
+            f"{c} INTEGER" if c == "id" else f"{c} VARCHAR"
+            for c in sorted(_SENTINEL_COLUMNS)
+        )
+        conn.execute(sa.text(f"CREATE TABLE {_SENTINEL_TABLE} ({coldefs})"))
+
+    with pytest.raises(RuntimeError) as excinfo:
+        asas_notifications.migrate(engine)
+
+    message = str(excinfo.value)
+    assert 'notification_delivery' in message
     assert not sa.inspect(engine).has_table(VERSION_TABLE)

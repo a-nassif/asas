@@ -16,8 +16,14 @@ jobs:
   repo:
     name: repo-wide invariants
     runs-on: ubuntu-latest
+    # Reads source files and runs pytest; it needs nothing else, and no step
+    # runs an authenticated git command.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

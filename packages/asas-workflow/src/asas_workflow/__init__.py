@@ -75,6 +75,7 @@ from .registry import (  # noqa: F401
 __version__ = "0.10.1"
 
 __all__ = [
+    "__version__",
     "ADMIN_FLOOR",
     "AssigneeStatus",
     "DefinitionSpec",
@@ -128,5 +129,4 @@ __all__ = [
     "subject_renderer",
     "subscribe",
     "validate_definition",
-    "__version__",
 ]
