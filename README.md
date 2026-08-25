@@ -76,15 +76,22 @@ a submodule — a trap that cost real time before it was pinned by a test.
   mode, `native_enum=False`, portable server defaults. CI runs both engines per package.
 - **No shared kernel yet**: the contract above is a convention, not a package. An `asas-core`
   appears only when a third package repeats identical code.
-- **Lockstep versioning**: one version for the repo, tagged `v0.1.0`, `v0.2.0`, ….
+- **Per-package versioning**: each package versions independently and its tag carries its name
+  (`asas-lookups/v0.11.0`), so a pin says exactly what it installs. Lockstep was the original
+  choice (DR 0017) and decayed — see [`RELEASING.md`](RELEASING.md) for what went wrong, the
+  release procedure, the support window, and the historical tag mapping.
 
 ## Consuming
 
 Pin a tag via a git install (no package index):
 
 ```
-asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@v0.1.0#subdirectory=packages/asas-lookups
+asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@asas-lookups/v0.11.0#subdirectory=packages/asas-lookups
 ```
+
+Each package carries its own `CHANGELOG.md`. Tags before 2026-08-25 are repo-wide
+(`v0.15.0`) under the retired lockstep scheme; [`RELEASING.md`](RELEASING.md) maps them
+to the package versions they actually contained.
 
 ## Developing
 

@@ -1,0 +1,93 @@
+# Releasing Asas
+
+## Versioning: one tag per package
+
+Each package versions **independently** and its git tag carries the package name:
+
+```
+asas-lookups/v0.11.0
+asas-storage/v0.15.0
+```
+
+A pin therefore says exactly what it installs:
+
+```
+asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@asas-lookups/v0.11.0#subdirectory=packages/asas-lookups
+```
+
+Pre-1.0, a **breaking change bumps the minor** (`0.11.0` → `0.12.0`); additive
+changes and fixes bump the patch. The version in `pyproject.toml`, the
+`__version__` in `__init__.py`, and the newest heading in the package's
+`CHANGELOG.md` must agree — a repo-wide test enforces it, so a half-finished
+bump fails CI rather than shipping.
+
+### Why not lockstep
+
+DR 0017 chose one version for the whole repo. It held for ten releases and then
+decayed, because bumping ten packages to release one is friction nobody absorbs.
+From `v0.11.0` the repo tag stopped matching any package's own version, and the
+result was pins that could not be read:
+
+- `asas-storage @ v0.15.0` installed storage **0.14.1**
+- `asas-notifications @ v0.15.0` installed notifications **0.11.0**
+- `asas-jobs` was **identical** at `v0.11.0`, `v0.12.0`, `v0.13.0`, `v0.14.0` and `v0.15.0`
+
+A second consumer makes that untenable: DGE pinned to a tag cannot tell what
+code they hold, and neither can we. Per-package tags are not a new policy so
+much as an admission of what the versions were already doing.
+
+## Cutting a release
+
+1. Land the change on `main`.
+2. Bump `version` in `pyproject.toml` and `__version__` in `__init__.py` for each
+   changed package.
+3. Add a `CHANGELOG.md` entry per changed package — what a *consumer* must do
+   differently, not a commit list. Call out breaking changes first.
+4. Tag each changed package from `main`: `git tag asas-lookups/v0.11.0 && git push origin asas-lookups/v0.11.0`
+5. Bump the consuming pins (Teamy's `backend/requirements.txt`) in their own
+   reviewed PR.
+
+**Never tag from a feature branch.** A tag is a promise that the code is on
+`main`; tagging early strands consumers on a commit that may never merge.
+
+### Consumers who cannot reach GitHub
+
+DGE mirrors this repo to their own GitLab and rewrites the origin with
+`url.insteadOf`, so tags must travel with the mirror refresh — a release is not
+delivered until that refresh happens. Procedure: `packaging/dge/SYNC.md` in the
+Teamy repo.
+
+## Support window
+
+The **current minor of each package** receives fixes. There is no long-term
+support branch: with two consumers and a shared owner, the supported answer to a
+bug is to take the next patch, not to backport.
+
+If that stops being true — a consumer pinned to an older minor who cannot
+upgrade — the change is a maintenance branch per package, and it needs deciding
+before it is needed rather than during an incident.
+
+## Historical tags (pre-2026-08-25)
+
+Repo-wide tags under the retired lockstep scheme. Kept for decoding old pins;
+do not create more.
+
+| repo tag | lookups | validation | storage | ratelimit | jobs | access | workflow | notifications | search | mcp |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `v0.1.0` | 0.1.0 | — | — | — | — | — | — | — | — | — |
+| `v0.2.0` | 0.2.0 | 0.2.0 | — | — | — | — | — | — | — | — |
+| `v0.2.1` | 0.2.1 | 0.2.1 | — | — | — | — | — | — | — | — |
+| `v0.3.0` | 0.3.0 | 0.3.0 | 0.3.0 | — | — | — | — | — | — | — |
+| `v0.4.0` | 0.4.0 | 0.4.0 | 0.4.0 | 0.4.0 | — | — | — | — | — | — |
+| `v0.5.0` | 0.5.0 | 0.5.0 | 0.5.0 | 0.5.0 | 0.5.0 | — | — | — | — | — |
+| `v0.6.0` | 0.6.0 | 0.6.0 | 0.6.0 | 0.6.0 | 0.6.0 | 0.6.0 | — | — | — | — |
+| `v0.7.0` | 0.7.0 | 0.7.0 | 0.7.0 | 0.7.0 | 0.7.0 | 0.7.0 | 0.7.0 | — | — | — |
+| `v0.8.0` | 0.8.0 | 0.8.0 | 0.8.0 | 0.8.0 | 0.8.0 | 0.8.0 | 0.8.0 | 0.8.0 | — | — |
+| `v0.9.0` | 0.9.0 | 0.9.0 | 0.9.0 | 0.9.0 | 0.9.0 | 0.9.0 | 0.9.0 | 0.9.0 | 0.9.0 | — |
+| `v0.10.0` | 0.10.0 | 0.10.0 | 0.10.0 | 0.10.0 | 0.10.0 | 0.10.0 | 0.10.0 | 0.10.0 | 0.10.0 | 0.10.0 |
+| `v0.10.1` | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 |
+| `v0.11.0` | 0.10.2 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.11.0 | 0.10.1 | 0.10.1 | 0.10.2 | 0.10.1 |
+| `v0.12.0` | 0.10.2 | 0.10.1 | 0.10.1 | 0.10.1 | 0.10.1 | 0.12.0 | 0.10.1 | 0.10.1 | 0.10.2 | 0.10.1 |
+| `v0.13.0` | 0.10.2 | 0.10.1 | 0.13.0 | 0.10.1 | 0.10.1 | 0.12.0 | 0.10.1 | 0.10.1 | 0.10.2 | 0.10.1 |
+| `v0.14.0` | 0.10.2 | 0.10.1 | 0.14.0 | 0.10.1 | 0.10.1 | 0.12.0 | 0.10.1 | 0.10.1 | 0.10.2 | 0.10.1 |
+| `v0.15.0` | 0.10.2 | 0.10.1 | 0.14.1 | 0.10.1 | 0.10.1 | 0.12.0 | 0.10.1 | 0.11.0 | 0.10.2 | 0.10.1 |

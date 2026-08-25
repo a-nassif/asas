@@ -34,7 +34,7 @@ from typing import Callable, Dict, Optional, Tuple
 
 from fastapi import HTTPException
 
-__version__ = "0.10.2"
+__version__ = "0.11.0"
 
 __all__ = [
     "Rule",
