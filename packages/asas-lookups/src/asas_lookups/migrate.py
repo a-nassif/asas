@@ -75,7 +75,7 @@ def _assert_adoptable(inspector) -> None:
 
 def migrate(engine: Engine) -> None:
     """Bring this package's tables to the current schema. Idempotent; call at boot
-    before the host's own migrations."""
+    alongside the host's own migrations."""
     inspector = sa.inspect(engine)
     cfg = _config(engine)
     if not inspector.has_table(VERSION_TABLE) and inspector.has_table(_SENTINEL_TABLE):
