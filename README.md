@@ -26,18 +26,47 @@ All ten planned modules are extracted (Teamy epic TEAMY-466, complete 2026-07-29
 
 ## The host contract
 
-Every package exposes the same five-part surface — nothing more:
+A package exposes the parts that **apply to it** — not all five, and the names differ where
+the shapes genuinely differ. This table is the contract; it is generated from the real surface
+and pinned by a conformance suite (`tests/test_host_contract.py` in every package).
 
-1. **`build_routers(get_session)`** — factory taking the host's FastAPI session dependency and
-   returning the package's `APIRouter`s. Auth is composition-time: the host applies its own
-   guards when including them; libraries never learn the host's auth model.
-2. **`configure_*` hooks** — optional callables for host concerns (e.g.
-   `configure_org_resolver(fn)` for multi-tenancy), defaulting to single-tenant/no-op.
-3. **`seed(session)`** — idempotent reference-data seeding, called by the host at boot.
-4. **`migrate(engine)`** — applies the package-owned Alembic chain (package-scoped version
-   table, adopt-or-create bootstrap), called by the host at boot before its own chain.
+| Package | Routers | Schema | Seeding | Host hooks |
+| --- | --- | --- | --- | --- |
+| `asas-lookups` | `build_routers` | `migrate` | `seed` | `configure_org_resolver` |
+| `asas-access` | — | `migrate` | `seed_field_permissions`, `seed_action_permissions`, `ensure_system_groups`, `ensure_clearance_levels` | — |
+| `asas-workflow` | — | `migrate` | `seed_workflow_definitions` | — |
+| `asas-notifications` | `build_router` | `migrate` | — | `configure_context_resolver`, `configure_recipient_filter` |
+| `asas-jobs` | — | `migrate` | `ensure_schedule` | `configure_context_binder`, `configure_runner` |
+| `asas-search` | — | `migrate` | — | — |
+| `asas-storage` | — | — | — | `configure` |
+| `asas-validation` | `build_router` | — | — | — |
+| `asas-ratelimit` | — | — | — | `configure` |
+| `asas-mcp` | `build_mcp_app` | — | — | — |
+
+Reading the table:
+
+1. **Routers.** `build_routers(get_session)` is **plural** when a package returns a bundle
+   (lookups returns `read` + `admin`) and **singular** when it returns one `APIRouter`. `asas-mcp`
+   is neither — it returns a mounted ASGI app. In all cases the factory takes the host's FastAPI
+   session dependency. **Auth is composition-time**: the host applies its own guards when
+   including the routers; libraries never learn the host's auth model.
+2. **`migrate(engine)`** — applies the package-owned Alembic chain (package-scoped version table,
+   adopt-or-create bootstrap). Call it **after** the host's own chain, not before: an adopting
+   host's historical migrations must have created the tables before `migrate()` looks for them.
+   Adoption is shape-verified — a host that already owns a table of the same name gets a loud
+   error rather than a silently skipped baseline.
+3. **Seeding** is idempotent and host-called at boot, but it is **not** uniformly named `seed`.
+   Only `asas-lookups` seeds pure reference data with no host input; the others seed *host policy*
+   and so take it as an argument, which is why they read `seed_field_permissions(session, …)`
+   rather than `seed(session)`. Packages with nothing to seed expose nothing.
+4. **`configure_*` hooks** — optional callables for host concerns, defaulting to
+   single-tenant/no-op. `configure_org_resolver(fn)` is the canonical example: tenancy stays a
+   *host* concept, and a host that never calls it runs single-tenant with no tenancy engine at all.
 5. **Service functions take an explicit `Session`** — no engine, session factory, or settings
    import inside a library.
+
+Every package declares `__all__`, and no name in it that the contract calls callable resolves to
+a submodule — a trap that cost real time before it was pinned by a test.
 
 ## Rules
 
