@@ -90,7 +90,7 @@ from .principals import (
     register_record_source,
     register_resolver,
 )
-from .seed import seed_action_permissions, seed_field_permissions
+from .seeding import seed_action_permissions, seed_field_permissions
 from .visibility import (
     PRIVATE,
     PUBLIC,
@@ -99,7 +99,7 @@ from .visibility import (
     register_private_viewers,
 )
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 
 __all__ = [
     "AccessGroup",

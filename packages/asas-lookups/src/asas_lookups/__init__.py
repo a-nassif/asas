@@ -18,10 +18,15 @@ Public surface — the Asas host contract:
 
 from .migrate import migrate
 from .router import Routers, build_routers
-from .seed import seed_lookups as seed
+from .seeding import (  # noqa: F401
+    bump_version_if,
+    ensure_type,
+    ensure_value,
+    seed_lookups as seed,
+)
 from .service import configure_org_resolver
 
-__version__ = "0.10.3"
+__version__ = "0.11.0"
 
 __all__ = [
     "Routers",
@@ -29,5 +34,8 @@ __all__ = [
     "configure_org_resolver",
     "migrate",
     "seed",
+    "ensure_type",
+    "ensure_value",
+    "bump_version_if",
     "__version__",
 ]

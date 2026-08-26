@@ -1,5 +1,9 @@
 # Per-package test matrix on BOTH database engines (the Asas dual-engine rule,
 # inherited from Teamy — see DR 0017). Add new packages to matrix.package.
+#
+# The `repo` job holds cross-package invariants, which the per-package matrix
+# cannot see: each leg runs with a single package directory as its working
+# directory. See tests/ at the repo root.
 
 name: CI
 
@@ -8,7 +12,27 @@ on:
     branches: [main]
   pull_request:
 
+# Every job here reads the checkout and runs tests; none performs an
+# authenticated git operation. Set once at the top so a new job inherits it.
+permissions:
+  contents: read
+
 jobs:
+  repo:
+    name: repo-wide invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      # No package installs: these tests read source files, they do not import
+      # the packages, so they stay fast and cannot be broken by a bad install.
+      - run: pytest tests/ -q
+
   test:
     name: ${{ matrix.package }} (${{ matrix.engine }})
     runs-on: ubuntu-latest
@@ -36,6 +60,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:

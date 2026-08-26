@@ -1,6 +1,7 @@
 """The migrate(engine) contract, including the dialect branch: fresh-create and
 adopt-by-stamp on Postgres; a version-only no-op on SQLite."""
 
+import pytest
 import sqlalchemy as sa
 
 import asas_search
@@ -55,3 +56,31 @@ def test_adopts_existing_table(engine):
             sa.text(f"SELECT version_num FROM {VERSION_TABLE}")  # noqa: S608
         ).scalar()
     assert version is not None
+
+
+def test_rejects_a_foreign_table_of_the_same_name(engine):
+    """A host that already owns an unrelated table called ``search_document`` must get a
+    loud error, not a silent adoption.
+
+    Adoption keys on a table *name*, and a name is not an identity. Without this
+    guard asas-search stamps the baseline as applied, therefore skips it entirely —
+    leaving the baseline's sibling tables uncreated — and returns success, only
+    to fail much later at runtime with no way to repair by re-running.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "CREATE TABLE search_document ("
+                "  id INTEGER PRIMARY KEY, candidate_id INTEGER, headline VARCHAR"
+                ")"
+            )
+        )
+
+    with pytest.raises(RuntimeError) as excinfo:
+        asas_search.migrate(engine)
+
+    message = str(excinfo.value)
+    assert "search_document" in message
+    assert "asas-search" in message
+    # Nothing was stamped, so a later run against a corrected database still works.
+    assert not sa.inspect(engine).has_table(VERSION_TABLE)
