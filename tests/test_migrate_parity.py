@@ -4,9 +4,9 @@ Every table-owning package carries its own copy of the adopt-or-create migration
 runner. That duplication is a **deliberate standing choice** (Teamy TEAMY-798,
 option (b)): extracting it into an ``asas-core`` package is the obvious
 alternative, but the family is installed by git URL with no package index, so a
-sibling dependency would force every consumer — Teamy and DGE's mirror alike —
-to add an explicit ``asas-core @ git+…`` pin. That cost was judged higher than
-the duplication.
+sibling dependency would force every consumer to add an explicit
+``asas-core @ git+…`` pin, including any that mirror this repo internally. That
+cost was judged higher than the duplication.
 
 The bargain only holds if the copies cannot drift, which is what this test is
 for. It already earned its place: ``asas-lookups`` (the pilot, written first)

@@ -32,9 +32,9 @@ result was pins that could not be read:
 - `asas-notifications @ v0.15.0` installed notifications **0.11.0**
 - `asas-jobs` was **identical** at `v0.11.0`, `v0.12.0`, `v0.13.0`, `v0.14.0` and `v0.15.0`
 
-A second consumer makes that untenable: DGE pinned to a tag cannot tell what
-code they hold, and neither can we. Per-package tags are not a new policy so
-much as an admission of what the versions were already doing.
+A second consumer makes that untenable: a host pinned to a tag can tell neither
+what code it holds nor what a fix would move it to. Per-package tags are not a
+new policy so much as an admission of what the versions were already doing.
 
 ## Cutting a release
 
@@ -58,12 +58,15 @@ defect this scheme exists to remove.
 **Never tag from a feature branch.** A tag is a promise that the code is on
 `main`; tagging early strands consumers on a commit that may never merge.
 
-### Consumers who cannot reach GitHub
+### Consumers who mirror this repo
 
-DGE mirrors this repo to their own GitLab and rewrites the origin with
-`url.insteadOf`, so tags must travel with the mirror refresh — a release is not
-delivered until that refresh happens. Procedure: `packaging/dge/SYNC.md` in the
-Teamy repo.
+A host on a closed network may mirror this repository internally and rewrite the
+origin with `url.insteadOf`. Tags must travel with that mirror: `git push
+--mirror`, or a refresh that copies branches only, leaves every pin unresolvable
+and the failure appears at `pip install` rather than at push time.
+
+A release is not delivered to such a consumer until their mirror carries the new
+tags.
 
 ## Support window
 
