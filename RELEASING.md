@@ -4,14 +4,14 @@
 
 Each package versions **independently** and its git tag carries the package name:
 
-```
+```text
 asas-lookups/v0.11.0
 asas-storage/v0.15.0
 ```
 
 A pin therefore says exactly what it installs:
 
-```
+```text
 asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@asas-lookups/v0.11.0#subdirectory=packages/asas-lookups
 ```
 
@@ -38,14 +38,22 @@ much as an admission of what the versions were already doing.
 
 ## Cutting a release
 
-1. Land the change on `main`.
-2. Bump `version` in `pyproject.toml` and `__version__` in `__init__.py` for each
-   changed package.
-3. Add a `CHANGELOG.md` entry per changed package — what a *consumer* must do
-   differently, not a commit list. Call out breaking changes first.
-4. Tag each changed package from `main`: `git tag asas-lookups/v0.11.0 && git push origin asas-lookups/v0.11.0`
-5. Bump the consuming pins (Teamy's `backend/requirements.txt`) in their own
+1. In the change's own branch, alongside the code:
+   - bump `version` in `pyproject.toml` **and** `__version__` in `__init__.py` for
+     each changed package (a repo-wide test fails if they disagree);
+   - add a `CHANGELOG.md` entry per changed package — what a *consumer* must do
+     differently, not a commit list. Breaking changes first.
+2. Land it on `main`. The bump and the changelog land **with** the code, so the
+   commit you tag is the commit that describes itself.
+3. Tag each changed package from that `main` revision:
+   `git tag asas-lookups/v0.11.0 && git push origin asas-lookups/v0.11.0`
+4. Bump the consuming pins (Teamy's `backend/requirements.txt`) in their own
    reviewed PR.
+
+The version bump belongs in the same commit as the change, not a release commit
+after it: tagging a `main` that does not yet carry the bump produces a tag whose
+`asas-lookups/v0.11.0` name disagrees with the `0.10.3` inside it — the exact
+defect this scheme exists to remove.
 
 **Never tag from a feature branch.** A tag is a promise that the code is on
 `main`; tagging early strands consumers on a commit that may never merge.

@@ -9,20 +9,22 @@ repo (DR 0017, epic TEAMY-466).
 
 ## Packages
 
-| Package | Import root | Status |
+| Package | Import root | Shape |
 | --- | --- | --- |
-| `asas-lookups` | `asas_lookups` | v0.10.1 — extracted (Teamy DR 0017 pilot) |
-| `asas-validation` | `asas_validation` | v0.10.1 — extracted (table-less contract variant) |
-| `asas-storage` | `asas_storage` | v0.10.1 — extracted (table-less, router-less variant) |
-| `asas-ratelimit` | `asas_ratelimit` | v0.10.1 — extracted (table-less, router-less variant) |
-| `asas-jobs` | `asas_jobs` | v0.10.1 — extracted (table-owning: package Alembic chain) |
-| `asas-access` | `asas_access` | v0.10.1 — extracted (table-owning: package Alembic chain) |
-| `asas-workflow` | `asas_workflow` | v0.10.1 — extracted (table-owning: package Alembic chain) |
-| `asas-notifications` | `asas_notifications` | v0.10.1 — extracted (table-owning + router variant) |
-| `asas-search` | `asas_search` | v0.10.1 — extracted (dialect-branched chain: PG deep tier) |
-| `asas-mcp` | `asas_mcp` | v0.10.1 — extracted (protocol-only variant) |
+| `asas-lookups` | `asas_lookups` | table-owning: package Alembic chain (DR 0017 pilot) |
+| `asas-validation` | `asas_validation` | table-less contract variant |
+| `asas-storage` | `asas_storage` | table-less, router-less variant |
+| `asas-ratelimit` | `asas_ratelimit` | table-less, router-less variant |
+| `asas-jobs` | `asas_jobs` | table-owning: package Alembic chain |
+| `asas-access` | `asas_access` | table-owning: package Alembic chain |
+| `asas-workflow` | `asas_workflow` | table-owning: package Alembic chain |
+| `asas-notifications` | `asas_notifications` | table-owning + router variant |
+| `asas-search` | `asas_search` | dialect-branched chain: PG deep tier |
+| `asas-mcp` | `asas_mcp` | protocol-only variant |
 
 All ten planned modules are extracted (Teamy epic TEAMY-466, complete 2026-07-29).
+Current versions are per package — see each package's `CHANGELOG.md`, and
+[`RELEASING.md`](RELEASING.md) for the tag scheme.
 
 ## The host contract
 
@@ -88,7 +90,7 @@ a submodule — a trap that cost real time before it was pinned by a test.
 
 Pin a tag via a git install (no package index):
 
-```
+```text
 asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@asas-lookups/v0.11.0#subdirectory=packages/asas-lookups
 ```
 
