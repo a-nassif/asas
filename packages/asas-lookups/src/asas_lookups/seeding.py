@@ -48,11 +48,6 @@ _MARITAL = [
     ("widowed", "Widowed", "أرمل"),
 ]
 
-_TEAM_CATEGORY = [
-    ("functional", "Functional", "وظيفي"),
-    ("product", "Product", "منتج"),
-]
-
 # Salary currencies (WXL-180) — closed list, ISO 4217 codes; AED first (the default).
 _CURRENCY = [
     ("AED", "UAE Dirham", "درهم إماراتي"),
@@ -71,118 +66,21 @@ _CURRENCY = [
 # Contract / engagement type (how the org engages a person). Synonyms are seeded as
 # aliases so search resolves "staff aug", "SOW", "contractor", … to the right code.
 # Each value: code, en, ar, aliases.
-_CONTRACT_TYPE = [
-    (
-        "direct_hire",
-        "Direct Hire",
-        "تعيين مباشر",
-        ["employee", "permanent", "fte", "full-time", "badged"],
-    ),
-    (
-        "contingent_worker",
-        "Contingent Worker",
-        "عامل مؤقت",
-        [
-            "long-term contractor",
-            "contractor",
-            "staff augmentation",
-            "staff aug",
-            "outsourced staff",
-            "agency",
-            "secondee",
-        ],
-    ),
-    (
-        "outsourced_service",
-        "Outsourced Service (SOW)",
-        "خدمة مُسندة",
-        [
-            "sow",
-            "statement of work",
-            "managed service",
-            "vendor",
-            "project contract",
-            "deliverable-based",
-            "outsourced delivery",
-        ],
-    ),
-]
-
 # Social platforms (WXL-198) — closed list backing member_social.platform_code. A new
 # platform is a lookup row, not a migration. Each value: code, en, ar.
-_SOCIAL_PLATFORM = [
-    ("linkedin", "LinkedIn", "لينكد إن"),
-    ("x", "X (Twitter)", "إكس (تويتر)"),
-    ("instagram", "Instagram", "إنستغرام"),
-    ("facebook", "Facebook", "فيسبوك"),
-    ("github", "GitHub", "غيت هاب"),
-    ("youtube", "YouTube", "يوتيوب"),
-    ("tiktok", "TikTok", "تيك توك"),
-    ("website", "Website", "موقع إلكتروني"),
-    ("other", "Other", "آخر"),
-]
-
 # Emergency-contact relationship (WXL-198) — closed list. Each value: code, en, ar.
-_CONTACT_RELATIONSHIP = [
-    ("spouse", "Spouse", "الزوج/الزوجة"),
-    ("parent", "Parent", "أحد الوالدين"),
-    ("sibling", "Sibling", "الأخ/الأخت"),
-    ("child", "Child", "الابن/الابنة"),
-    ("relative", "Relative", "قريب"),
-    ("friend", "Friend", "صديق"),
-    ("colleague", "Colleague", "زميل"),
-    ("other", "Other", "آخر"),
-]
-
 # Project health (RAG) — a closed list. ``meta.tone`` drives the badge color in the UI,
 # so admins can add or recolor values without a code change. Each value: code, en, ar, tone.
-_PROJECT_HEALTH = [
-    ("on_track", "On track", "على المسار", "success"),
-    ("at_risk", "At risk", "في خطر", "warning"),
-    ("delayed", "Delayed", "متأخر", "danger"),
-    ("on_hold", "On hold", "معلّق", "neutral"),
-]
-
 # Work-item statuses (WXL-203) — closed, admin-extensible list. ``meta.category`` is the
 # FIXED engine vocabulary (backlog|unstarted|started|completed|canceled) that drives board
 # columns, rollups and lifecycle timestamps; ``meta.tone`` the badge color. Admins may add
 # or rename statuses freely (vocabulary); the engine keys only on category — the one idea
 # Linear, Jira, Asana and Azure DevOps all converge on (docs/src/content/docs/architecture/decisions/0008-work-items.md §4.2).
 # Each value: code, en, ar, category, tone.
-_WORK_ITEM_STATUS = [
-    ("backlog", "Backlog", "قائمة الأعمال", "backlog", "neutral"),
-    ("todo", "Todo", "للتنفيذ", "unstarted", "neutral"),
-    ("in_progress", "In Progress", "قيد التنفيذ", "started", "info"),
-    ("in_review", "In Review", "قيد المراجعة", "started", "warning"),
-    ("done", "Done", "منجز", "completed", "success"),
-    ("canceled", "Canceled", "ملغى", "canceled", "neutral"),
-]
-
 # Work-item types (WXL-203) — closed but admin-extensible; seeded with the generic `task`
 # only (no dev jargon like bug/story — owner decision 2026-07-09). Type NEVER drives
 # behavior; it's classification vocabulary.
-_WORK_ITEM_TYPE = [
-    ("task", "Task", "مهمة"),
-]
-
 # Risk & issue register categories — closed, admin-managed lists. Each value: code, en, ar.
-_RISK_CATEGORY = [
-    ("technical", "Technical", "تقني"),
-    ("schedule", "Schedule", "الجدول الزمني"),
-    ("cost", "Cost", "التكلفة"),
-    ("resource", "Resource", "الموارد"),
-    ("scope", "Scope", "النطاق"),
-    ("external", "External", "خارجي"),
-]
-
-_ISSUE_CATEGORY = [
-    ("technical", "Technical", "تقني"),
-    ("process", "Process", "العملية"),
-    ("resource", "Resource", "الموارد"),
-    ("quality", "Quality", "الجودة"),
-    ("external", "External", "خارجي"),
-]
-
 
 def ensure_type(session: Session, **kwargs) -> LookupType:
     t = session.exec(
@@ -325,42 +223,6 @@ def seed_lookups(session: Session) -> None:
     )
     bump_version_if(session, marital, added)
 
-    team_category = ensure_type(
-        session,
-        key="team_category",
-        name="Team category",
-        code_system="internal",
-        default_sort=SortMode.sort_order,
-    )
-    added = sum(
-        ensure_value(
-            session, team_category.id, code, [("en", en), ("ar", ar)], sort_order=i
-        )
-        for i, (code, en, ar) in enumerate(_TEAM_CATEGORY)
-    )
-    bump_version_if(session, team_category, added)
-
-    # Org/edu open types (WXL-182): values are user-created (get_or_create on write,
-    # backfilled from historical free text by the WXL-183 migration) — only the type
-    # registrations live here. One type per field so each picker offers plausible
-    # values only (no PhD from Microsoft).
-    for key, name in (
-        ("company", "Company"),
-        ("degree", "Degree"),
-        ("field_of_study", "Field of study"),
-        ("education_institution", "Education institution"),
-        ("awarding_body", "Awarding body"),
-        ("training_provider", "Training provider"),
-    ):
-        ensure_type(
-            session,
-            key=key,
-            name=name,
-            is_open=True,
-            code_system="internal",
-            default_sort=SortMode.label,
-        )
-
     currency = ensure_type(
         session,
         key="currency",
@@ -376,126 +238,19 @@ def seed_lookups(session: Session) -> None:
     )
     bump_version_if(session, currency, added)
 
-    project_health = ensure_type(
-        session,
-        key="project_health",
-        name="Project health",
-        code_system="internal",
-        default_sort=SortMode.sort_order,
-    )
-    added = sum(
-        ensure_value(
-            session,
-            project_health.id,
-            code,
-            [("en", en), ("ar", ar)],
-            sort_order=i,
-            meta={"tone": tone},
-        )
-        for i, (code, en, ar, tone) in enumerate(_PROJECT_HEALTH)
-    )
-    bump_version_if(session, project_health, added)
-
-    work_item_status = ensure_type(
-        session,
-        key="work_item_status",
-        name="Work item status",
-        code_system="internal",
-        default_sort=SortMode.sort_order,
-    )
-    added = sum(
-        ensure_value(
-            session,
-            work_item_status.id,
-            code,
-            [("en", en), ("ar", ar)],
-            sort_order=i,
-            meta={"category": category, "tone": tone},
-        )
-        for i, (code, en, ar, category, tone) in enumerate(_WORK_ITEM_STATUS)
-    )
-    bump_version_if(session, work_item_status, added)
-
-    work_item_type = ensure_type(
-        session,
-        key="work_item_type",
-        name="Work item type",
-        code_system="internal",
-        default_sort=SortMode.sort_order,
-    )
-    added = sum(
-        ensure_value(
-            session, work_item_type.id, code, [("en", en), ("ar", ar)], sort_order=i
-        )
-        for i, (code, en, ar) in enumerate(_WORK_ITEM_TYPE)
-    )
-    bump_version_if(session, work_item_type, added)
-
-    for type_key, type_name, values in (
-        ("risk_category", "Risk category", _RISK_CATEGORY),
-        ("issue_category", "Issue category", _ISSUE_CATEGORY),
-        ("social_platform", "Social platform", _SOCIAL_PLATFORM),
-        ("contact_relationship", "Contact relationship", _CONTACT_RELATIONSHIP),
-    ):
-        lt = ensure_type(
-            session,
-            key=type_key,
-            name=type_name,
-            code_system="internal",
-            default_sort=SortMode.sort_order,
-        )
-        added = sum(
-            ensure_value(session, lt.id, code, [("en", en), ("ar", ar)], sort_order=i)
-            for i, (code, en, ar) in enumerate(values)
-        )
-        bump_version_if(session, lt, added)
-
-    contract_type = ensure_type(
-        session,
-        key="contract_type",
-        name="Contract Type",
-        code_system="internal",
-        default_sort=SortMode.sort_order,
-    )
-    added = sum(
-        ensure_value(
-            session,
-            contract_type.id,
-            code,
-            [("en", en), ("ar", ar)],
-            sort_order=i,
-            aliases=aliases,
-        )
-        for i, (code, en, ar, aliases) in enumerate(_CONTRACT_TYPE)
-    )
-    bump_version_if(session, contract_type, added)
-
-    # Office locations (WXL-198) — closed, admin-managed via /admin/lookups; seeded
-    # empty (each org defines its own offices). Backs member_contact.office_location_code.
-    ensure_type(
-        session,
-        key="office_location",
-        name="Office location",
-        description="Admin-managed list of the org's offices/sites.",
-        code_system="internal",
-        default_sort=SortMode.label,
-    )
-
-    # --- Open lists (users add values via the app) ---
-    ensure_type(
-        session,
-        key="skill",
-        name="Skill",
-        description="Open list — new skills are created on first use.",
-        is_open=True,
-        code_system="internal",
-        default_sort=SortMode.label,
-    )
-
     # Project roles were an open lookup type here from TEAMY-291 until TEAMY-487
     # promoted them to a first-class `project_role` entity in the host (Teamy) —
     # the seed is retired; hosts adopt any surviving lookup values into their own
     # catalog at boot (idempotent) and this library never re-creates the type.
+    #
+    # TEAMY-803 took that further: seventeen types that were either a host's
+    # domain objects (work items, project health, risks) or a value set someone
+    # chose rather than one the world agrees on (contract types, social
+    # platforms, next-of-kin relationships, and the open CV vocabularies) left
+    # for the same reason. What remains below is standards-based or near-
+    # universal to any people system. A host's own words belong to the host —
+    # the library seeding them meant a second host inherited the first one's
+    # product vocabulary without asking.
 
     # --- Countries & nationalities (alphabetical, ISO codes) ---
     country = ensure_type(

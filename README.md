@@ -56,6 +56,9 @@ Reading the table:
    Adoption is shape-verified — a host that already owns a table of the same name gets a loud
    error rather than a silently skipped baseline.
 3. **Seeding** is idempotent and host-called at boot, but it is **not** uniformly named `seed`.
+   `asas-lookups` seeds only vocabulary that is standards-based or near-universal — salutation,
+   gender, marital status, currency, country, nationality. **Your own product's words are yours
+   to seed**; register them with `ensure_type` / `ensure_value` / `bump_version_if`.
    Only `asas-lookups` seeds pure reference data with no host input; the others seed *host policy*
    and so take it as an argument, which is why they read `seed_field_permissions(session, …)`
    rather than `seed(session)`. Packages with nothing to seed expose nothing.
