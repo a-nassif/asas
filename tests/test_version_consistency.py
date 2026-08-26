@@ -42,8 +42,9 @@ def _changelog_version(pkg: pathlib.Path) -> str:
 
 
 def test_every_package_is_checked():
-    """Ten packages; a new one must not slip past this file unnoticed."""
-    assert len(PACKAGES) == 10, [p.name for p in PACKAGES]
+    """Eleven packages (the original ten plus asas-cli, added deliberately here
+    so a twelfth can't slip past this file unnoticed)."""
+    assert len(PACKAGES) == 11, [p.name for p in PACKAGES]
 
 
 @pytest.mark.parametrize("pkg", PACKAGES, ids=lambda p: p.name)

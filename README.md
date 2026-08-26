@@ -21,6 +21,7 @@ repo (DR 0017, epic TEAMY-466).
 | `asas-notifications` | `asas_notifications` | table-owning + router variant |
 | `asas-search` | `asas_search` | dialect-branched chain: PG deep tier |
 | `asas-mcp` | `asas_mcp` | protocol-only variant |
+| `asas-cli` | `asas_cli` | developer CLI (`asas add`, `asas new`) — no host contract, install-time only |
 
 All ten planned modules are extracted (Teamy epic TEAMY-466, complete 2026-07-29).
 Current versions are per package — see each package's `CHANGELOG.md`, and
@@ -88,7 +89,13 @@ a submodule — a trap that cost real time before it was pinned by a test.
 
 ## Consuming
 
-Pin a tag via a git install (no package index):
+The easiest path is `asas-cli` (see `packages/asas-cli`): `asas add <package>` pins
+one package into an existing project's `pyproject.toml`; `asas new <name> --with
+<packages>` scaffolds a new FastAPI project with a working boot sequence already
+wired. Neither hides anything — both just generate the same manual wiring below,
+so you can always drop the CLI and do it by hand.
+
+Manual pin via a git install (no package index):
 
 ```text
 asas-lookups @ git+https://github.com/wlootah-a11y/asas.git@asas-lookups/v0.11.0#subdirectory=packages/asas-lookups
