@@ -26,16 +26,16 @@ def _cmd_add(args: argparse.Namespace) -> int:
         print(f"asas add: {exc}", file=sys.stderr)
         return 1
 
-    tag = args.tag or latest_tag()
+    version = f"v{args.version.lstrip('v')}" if args.version else latest_tag(spec.dist_name)
     path = Path(args.path)
 
     try:
-        outcome = add_dependency(path, spec, tag)
+        outcome = add_dependency(path, spec, version)
     except (FileNotFoundError, KeyError) as exc:
         print(f"asas add: {exc}", file=sys.stderr)
         return 1
 
-    print(f"asas add: {outcome} {spec.dist_name} @ {tag} in {path}")
+    print(f"asas add: {outcome} {spec.dist_name} @ {spec.dist_name}/{version} in {path}")
     if outcome == "added":
         print("Run `pip install -e .` (or your usual install command) to pull it in.")
     return 0
@@ -58,7 +58,7 @@ def _cmd_new(args: argparse.Namespace) -> int:
     project_dir = Path(args.dir) / args.name if args.dir else Path(args.name)
 
     try:
-        created = scaffold(project_dir, args.name, keys, tag=args.tag)
+        created = scaffold(project_dir, args.name, keys)
     except FileExistsError as exc:
         print(f"asas new: {exc}", file=sys.stderr)
         return 1
@@ -79,7 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_add = sub.add_parser("add", help="pin one Asas package into an existing project")
     p_add.add_argument("package", help="short key (e.g. 'lookups') or dist name (e.g. 'asas-lookups')")
-    p_add.add_argument("--tag", default=None, help="git tag to pin (default: latest)")
+    p_add.add_argument(
+        "--version", default=None, help="this package's own version to pin, e.g. 0.11.0 (default: latest)"
+    )
     p_add.add_argument("--path", default="pyproject.toml", help="path to the project's pyproject.toml")
     p_add.set_defaults(func=_cmd_add)
 
@@ -88,7 +90,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument(
         "--with", dest="with_", required=True, help="comma-separated package keys, e.g. lookups,ratelimit"
     )
-    p_new.add_argument("--tag", default=None, help="git tag to pin (default: latest)")
     p_new.add_argument("--dir", default=None, help="parent directory to create the project in (default: cwd)")
     p_new.set_defaults(func=_cmd_new)
 

@@ -15,11 +15,11 @@ asas list                                 # see every known package + its varian
 ### Once this is merged and tagged
 
 Pin `asas-cli` itself the same way you'd pin any other Asas package (see the
-repo README's "Consuming" section) — a normal `git+https://...#subdirectory=
-packages/asas-cli` line, or globally with `pipx`:
+repo README's "Consuming" section) — its own tag, `asas-cli/vX.Y.Z`, or
+globally with `pipx`:
 
 ```bash
-pipx install "asas-cli @ git+https://github.com/wlootah-a11y/asas.git@<tag>#subdirectory=packages/asas-cli"
+pipx install "asas-cli @ git+https://github.com/wlootah-a11y/asas.git@asas-cli/v0.1.0#subdirectory=packages/asas-cli"
 ```
 
 ### Right now — trying it locally, before it's published
@@ -67,14 +67,16 @@ pytest -q
 ## `asas add <package>`
 
 Writes the correct `git+https://...#subdirectory=...` line into your
-project's `pyproject.toml` `[project.dependencies]` — pinned to the latest
-Asas git tag by default (`--tag` to override). Idempotent: running it again
-for the same package updates the pin in place instead of duplicating it.
-Accepts either the short key (`lookups`) or the full dist name
-(`asas-lookups`).
+project's `pyproject.toml` `[project.dependencies]` — pinned to that
+package's own latest tag by default (`--version` to override). Packages
+version **independently** since [`RELEASING.md`](../../RELEASING.md)
+(2026-08-25): the tag is `asas-<pkg>/vX.Y.Z`, so pinning two packages never
+shares one version number. Idempotent: running it again for the same
+package updates the pin in place instead of duplicating it. Accepts either
+the short key (`lookups`) or the full dist name (`asas-lookups`).
 
 ```
-asas add ratelimit --tag v0.15.0 --path ./services/api/pyproject.toml
+asas add ratelimit --version 0.11.0 --path ./services/api/pyproject.toml
 ```
 
 ## `asas new <name> --with <keys>`

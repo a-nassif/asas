@@ -2,14 +2,15 @@ import subprocess
 
 import pytest
 
-from asas_cli.git_tags import FALLBACK_TAG, latest_tag
+from asas_cli.git_tags import FALLBACK_TAGS, latest_tag, latest_tags
 
 _LS_REMOTE_OUTPUT = (
-    "abc123\trefs/tags/v0.1.0\n"
-    "def456\trefs/tags/v0.10.0\n"
-    "aaa111\trefs/tags/v0.15.0\n"
-    "aaa111\trefs/tags/v0.15.0^{}\n"  # peeled annotated-tag ref, same tag
-    "zzz999\trefs/tags/not-a-version\n"
+    "abc123\trefs/tags/asas-lookups/v0.10.0\n"
+    "def456\trefs/tags/asas-lookups/v0.11.0\n"
+    "aaa111\trefs/tags/asas-lookups/v0.11.0^{}\n"  # peeled annotated-tag ref, same tag
+    "bbb222\trefs/tags/asas-ratelimit/v0.11.0\n"
+    "zzz999\trefs/tags/v0.15.0\n"  # retired flat tag — must never match
+    "yyy888\trefs/tags/not-a-version\n"
 )
 
 
@@ -20,34 +21,82 @@ def _fake_run(output):
     return _run
 
 
-def test_latest_tag_picks_highest_semver(monkeypatch):
+def test_latest_tags_picks_highest_semver_per_package(monkeypatch):
     monkeypatch.setattr(subprocess, "run", _fake_run(_LS_REMOTE_OUTPUT))
-    assert latest_tag() == "v0.15.0"
+    result = latest_tags(["asas-lookups", "asas-ratelimit"])
+    assert result == {"asas-lookups": "v0.11.0", "asas-ratelimit": "v0.11.0"}
 
 
-def test_latest_tag_ignores_non_semver_refs(monkeypatch):
-    monkeypatch.setattr(subprocess, "run", _fake_run("abc\trefs/tags/not-a-version\n"))
-    assert latest_tag() == FALLBACK_TAG
+def test_latest_tags_ignores_retired_flat_tags(monkeypatch):
+    monkeypatch.setattr(subprocess, "run", _fake_run(_LS_REMOTE_OUTPUT))
+    # asas-storage has no namespaced tag in the fixture output — must fall
+    # back, never accidentally match the flat `refs/tags/v0.15.0`.
+    result = latest_tags(["asas-storage"])
+    assert result == {"asas-storage": FALLBACK_TAGS["asas-storage"]}
 
 
-def test_latest_tag_falls_back_when_git_unavailable(monkeypatch, capsys):
+def test_latest_tags_one_remote_call_for_many_packages(monkeypatch):
+    calls = []
+
+    def _run(*args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout=_LS_REMOTE_OUTPUT, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    latest_tags(["asas-lookups", "asas-ratelimit", "asas-storage", "asas-jobs"])
+    assert len(calls) == 1
+
+
+def test_latest_tags_falls_back_when_git_unavailable(monkeypatch, capsys):
     def _raise(*args, **kwargs):
         raise FileNotFoundError("git not found")
 
     monkeypatch.setattr(subprocess, "run", _raise)
-    assert latest_tag() == FALLBACK_TAG
-    assert "falling back" in capsys.readouterr().err
+    result = latest_tags(["asas-lookups", "asas-jobs"])
+    assert result == {"asas-lookups": FALLBACK_TAGS["asas-lookups"], "asas-jobs": FALLBACK_TAGS["asas-jobs"]}
+    assert "could not reach" in capsys.readouterr().err
 
 
-def test_latest_tag_falls_back_on_nonzero_exit(monkeypatch):
+def test_latest_tags_falls_back_on_nonzero_exit(monkeypatch):
     def _raise(*args, **kwargs):
         raise subprocess.CalledProcessError(128, args)
 
     monkeypatch.setattr(subprocess, "run", _raise)
-    assert latest_tag() == FALLBACK_TAG
+    assert latest_tags(["asas-lookups"]) == {"asas-lookups": FALLBACK_TAGS["asas-lookups"]}
 
 
-def test_fallback_tag_is_itself_a_valid_semver_tag():
-    # Guards against FALLBACK_TAG bit-rotting into a non-parseable string.
-    major, minor, patch = FALLBACK_TAG.lstrip("v").split(".")
-    assert major.isdigit() and minor.isdigit() and patch.isdigit()
+def test_latest_tags_unknown_dist_with_no_fallback_raises(monkeypatch):
+    monkeypatch.setattr(subprocess, "run", _fake_run(""))
+    with pytest.raises(KeyError, match="no live tag found"):
+        latest_tags(["asas-nonexistent"])
+
+
+def test_latest_tags_empty_input_returns_empty(monkeypatch):
+    calls = []
+
+    def _run(*args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _run)
+    assert latest_tags([]) == {}
+
+
+def test_latest_tag_single_package_convenience_form(monkeypatch):
+    monkeypatch.setattr(subprocess, "run", _fake_run(_LS_REMOTE_OUTPUT))
+    assert latest_tag("asas-ratelimit") == "v0.11.0"
+
+
+def test_every_installable_package_has_a_fallback():
+    installable = {
+        "asas-lookups", "asas-validation", "asas-storage", "asas-ratelimit",
+        "asas-jobs", "asas-access", "asas-workflow", "asas-notifications",
+        "asas-search", "asas-mcp",
+    }
+    assert set(FALLBACK_TAGS) == installable
+
+
+def test_fallback_tags_are_all_valid_semver():
+    for dist, tag in FALLBACK_TAGS.items():
+        major, minor, patch = tag.lstrip("v").split(".")
+        assert major.isdigit() and minor.isdigit() and patch.isdigit(), dist

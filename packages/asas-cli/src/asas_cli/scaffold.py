@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import templates
-from .git_tags import latest_tag
+from .git_tags import latest_tags
 from .registry import PackageSpec, dependency_string, resolve
 
 _BASE_DEPENDENCIES = (
@@ -124,8 +124,10 @@ class AppSettings(BaseSettings):
 '''
 
 
-def _render_pyproject_toml(project_name: str, specs: list[PackageSpec], tag: str) -> str:
-    deps = list(_BASE_DEPENDENCIES) + [dependency_string(spec, tag) for spec in specs]
+def _render_pyproject_toml(project_name: str, specs: list[PackageSpec], versions: dict[str, str]) -> str:
+    deps = list(_BASE_DEPENDENCIES) + [
+        dependency_string(spec, versions[spec.dist_name]) for spec in specs
+    ]
     deps_block = ",\n".join(f'    "{d}"' for d in deps)
     return f'''[project]
 name = "{project_name}"
@@ -140,11 +142,15 @@ testpaths = ["tests"]
 '''
 
 
-def _render_readme(project_name: str, specs: list[PackageSpec], tag: str) -> str:
-    rows = "\n".join(f"- **{s.dist_name}** ({s.variant}) — {s.summary}" for s in specs)
+def _render_readme(project_name: str, specs: list[PackageSpec], versions: dict[str, str]) -> str:
+    rows = "\n".join(
+        f"- **{s.dist_name}** `{versions[s.dist_name]}` ({s.variant}) — {s.summary}"
+        for s in specs
+    )
     return f'''# {project_name}
 
-Scaffolded by `asas new`, pinned to Asas `{tag}`. Wired packages:
+Scaffolded by `asas new`. Wired packages, each pinned to its own tag —
+packages version independently (see Asas's `RELEASING.md`):
 
 {rows}
 
@@ -166,24 +172,30 @@ def scaffold(
     project_name: str,
     package_keys: list[str],
     *,
-    tag: str | None = None,
+    versions: dict[str, str] | None = None,
 ) -> list[Path]:
     """Create `project_dir` with a working main.py/settings.py/pyproject.toml
-    wired for `package_keys`. Refuses if `project_dir` already exists and is
-    non-empty — `asas new` only ever starts a fresh project."""
+    wired for `package_keys`, each pinned to its own tag (packages version
+    independently — see RELEASING.md). `versions` optionally overrides the
+    resolved version per dist name (e.g. ``{"asas-lookups": "v0.10.0"}``);
+    anything not overridden is resolved to its latest live tag in one remote
+    round trip. Refuses if `project_dir` already exists and is non-empty —
+    `asas new` only ever starts a fresh project."""
     if project_dir.exists() and any(project_dir.iterdir()):
         raise FileExistsError(f"{project_dir} already exists and is not empty")
 
     specs = [resolve(key) for key in package_keys]
-    resolved_tag = tag or latest_tag()
+    overrides = versions or {}
+    to_resolve = [spec.dist_name for spec in specs if spec.dist_name not in overrides]
+    resolved_versions = {**overrides, **latest_tags(to_resolve)} if to_resolve else dict(overrides)
 
     project_dir.mkdir(parents=True, exist_ok=True)
 
     files = {
         project_dir / "main.py": _render_main_py(project_name, package_keys),
         project_dir / "settings.py": _render_settings_py(package_keys),
-        project_dir / "pyproject.toml": _render_pyproject_toml(project_name, specs, resolved_tag),
-        project_dir / "README.md": _render_readme(project_name, specs, resolved_tag),
+        project_dir / "pyproject.toml": _render_pyproject_toml(project_name, specs, resolved_versions),
+        project_dir / "README.md": _render_readme(project_name, specs, resolved_versions),
         project_dir / ".env.example": "DATABASE_URL=sqlite:///./app.db\n",
     }
     for path, content in files.items():

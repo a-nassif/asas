@@ -1,5 +1,11 @@
-"""Resolve which Asas repo tag `asas add`/`asas new` pin generated
-dependency strings to, when the caller doesn't pass --tag explicitly."""
+"""Resolve which per-package Asas tag `asas add`/`asas new` pin generated
+dependency strings to, when the caller doesn't pass an explicit version.
+
+Since `RELEASING.md` (2026-08-25) each package tags **independently** —
+`asas-<pkg>/vX.Y.Z` — there is no repo-wide tag to resolve against anymore.
+The old flat `vX.Y.Z` scheme is retired (kept only for decoding old pins);
+every function here is scoped to one dist name at a time, batched into a
+single remote round trip when resolving several."""
 
 from __future__ import annotations
 
@@ -9,24 +15,36 @@ import sys
 
 from .registry import REPO_URL
 
-_TAG_RE = re.compile(r"refs/tags/(v\d+\.\d+\.\d+)$")
+# refs/tags/<dist_name>/vX.Y.Z
+_TAG_RE = re.compile(r"refs/tags/([a-z0-9-]+)/(v\d+\.\d+\.\d+)$")
 
-# Bumped on release. Used only as a last resort — offline, no git on PATH, or
-# the remote is unreachable — so `asas add`/`asas new` still work without a
-# network, just possibly pinned to a tag that's no longer the newest. Passing
-# --tag always wins over both this and live discovery.
-FALLBACK_TAG = "v0.15.0"
+# Bumped whenever a package cuts a release (see RELEASING.md). Used only as a
+# last resort — offline, no git on PATH, or the remote is unreachable — so
+# `asas add`/`asas new` still work without a network, just possibly pinned to
+# a tag that's no longer that package's newest. An explicit --version always
+# wins over both this and live discovery.
+FALLBACK_TAGS: dict[str, str] = {
+    "asas-access": "v0.13.0",
+    "asas-jobs": "v0.11.0",
+    "asas-lookups": "v0.11.0",
+    "asas-mcp": "v0.11.0",
+    "asas-notifications": "v0.12.0",
+    "asas-ratelimit": "v0.11.0",
+    "asas-search": "v0.11.0",
+    "asas-storage": "v0.15.0",
+    "asas-validation": "v0.11.0",
+    "asas-workflow": "v0.11.0",
+}
 
 
-def _semver_key(tag: str) -> tuple[int, int, int]:
-    major, minor, patch = tag.lstrip("v").split(".")
+def _semver_key(version_tag: str) -> tuple[int, int, int]:
+    major, minor, patch = version_tag.lstrip("v").split(".")
     return (int(major), int(minor), int(patch))
 
 
-def latest_tag(repo_url: str = REPO_URL, *, timeout: float = 5.0) -> str:
-    """The highest ``vX.Y.Z`` tag on the remote, via ``git ls-remote --tags``
-    — no local clone needed. Falls back to FALLBACK_TAG (warning on stderr)
-    if git is missing, there's no network, or the remote has no such tags."""
+def _ls_remote_tag_refs(repo_url: str, timeout: float) -> list[str] | None:
+    """Raw (de-peeled) `refs/tags/...` ref strings from the remote, or None
+    if the remote couldn't be reached at all."""
     try:
         result = subprocess.run(
             ["git", "ls-remote", "--tags", repo_url],
@@ -36,14 +54,10 @@ def latest_tag(repo_url: str = REPO_URL, *, timeout: float = 5.0) -> str:
             check=True,
         )
     except Exception as exc:  # noqa: BLE001 — any failure here is a soft fallback
-        print(
-            f"asas: could not reach {repo_url} to find the latest tag ({exc}); "
-            f"falling back to {FALLBACK_TAG}. Pass --tag to pin explicitly.",
-            file=sys.stderr,
-        )
-        return FALLBACK_TAG
+        print(f"asas: could not reach {repo_url} ({exc}).", file=sys.stderr)
+        return None
 
-    tags: set[str] = set()
+    refs = []
     for line in result.stdout.splitlines():
         parts = line.split()
         if len(parts) != 2:
@@ -51,16 +65,48 @@ def latest_tag(repo_url: str = REPO_URL, *, timeout: float = 5.0) -> str:
         ref = parts[1]
         if ref.endswith("^{}"):  # peeled annotated-tag ref — same tag name
             ref = ref[:-3]
-        match = _TAG_RE.search(ref)
-        if match:
-            tags.add(match.group(1))
+        refs.append(ref)
+    return refs
 
-    if not tags:
+
+def latest_tags(
+    dist_names, repo_url: str = REPO_URL, *, timeout: float = 5.0
+) -> dict[str, str]:
+    """The highest `vX.Y.Z` version tag for each of `dist_names`, e.g.
+    ``{"asas-lookups": "v0.11.0"}`` — one remote round trip regardless of how
+    many names are asked for. Falls back per-package to FALLBACK_TAGS (with a
+    stderr warning) for any name live discovery didn't resolve; raises
+    KeyError only if a name has neither a live tag nor a known fallback."""
+    wanted = set(dist_names)
+    resolved: dict[str, str] = {}
+
+    refs = _ls_remote_tag_refs(repo_url, timeout)
+    if refs is not None:
+        by_dist: dict[str, set[str]] = {}
+        for ref in refs:
+            match = _TAG_RE.search(ref)
+            if match and match.group(1) in wanted:
+                by_dist.setdefault(match.group(1), set()).add(match.group(2))
+        for dist, versions in by_dist.items():
+            resolved[dist] = max(versions, key=_semver_key)
+
+    for dist in wanted - set(resolved):
+        fallback = FALLBACK_TAGS.get(dist)
+        if fallback is None:
+            raise KeyError(
+                f"no live tag found for {dist!r} and no fallback known — "
+                "pass --version explicitly"
+            )
         print(
-            f"asas: no vX.Y.Z tags found on {repo_url}; falling back to "
-            f"{FALLBACK_TAG}. Pass --tag to pin explicitly.",
+            f"asas: could not resolve a live tag for {dist}; falling back to "
+            f"{fallback}. Pass --version to pin explicitly.",
             file=sys.stderr,
         )
-        return FALLBACK_TAG
+        resolved[dist] = fallback
 
-    return max(tags, key=_semver_key)
+    return resolved
+
+
+def latest_tag(dist_name: str, repo_url: str = REPO_URL, *, timeout: float = 5.0) -> str:
+    """Single-package convenience form of latest_tags()."""
+    return latest_tags([dist_name], repo_url, timeout=timeout)[dist_name]

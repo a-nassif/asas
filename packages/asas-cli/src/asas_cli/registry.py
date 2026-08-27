@@ -123,7 +123,14 @@ def resolve(name: str) -> PackageSpec:
     )
 
 
-def dependency_string(spec: PackageSpec, tag: str) -> str:
+def dependency_string(spec: PackageSpec, version_tag: str) -> str:
     """The PEP 508 direct-URL dependency line pip/uv install from — no
-    package index involved, straight from the git tag."""
-    return f"{spec.dist_name} @ git+{REPO_URL}@{tag}#subdirectory={spec.subdir}"
+    package index involved, straight from the git tag.
+
+    `version_tag` is this package's own version suffix (e.g. ``"v0.11.0"``,
+    as returned by ``git_tags.latest_tags()``/``FALLBACK_TAGS`` — never a
+    full ref). Each package tags independently since RELEASING.md
+    (2026-08-25): the real git tag is ``<dist_name>/<version_tag>``, e.g.
+    ``asas-lookups/v0.11.0`` — there is no shared repo-wide tag anymore."""
+    ref = f"{spec.dist_name}/{version_tag}"
+    return f"{spec.dist_name} @ git+{REPO_URL}@{ref}#subdirectory={spec.subdir}"

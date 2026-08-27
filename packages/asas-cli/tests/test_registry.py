@@ -34,11 +34,13 @@ def test_resolve_unknown_raises_with_choices():
 
 
 def test_dependency_string_shape():
+    # Since RELEASING.md (2026-08-25): the git ref is <dist_name>/<version_tag>,
+    # never a shared repo-wide tag.
     spec = resolve("ratelimit")
-    line = dependency_string(spec, "v0.15.0")
+    line = dependency_string(spec, "v0.11.0")
     assert line == (
-        "asas-ratelimit @ git+https://github.com/wlootah-a11y/asas.git@v0.15.0"
-        "#subdirectory=packages/asas-ratelimit"
+        "asas-ratelimit @ git+https://github.com/wlootah-a11y/asas.git"
+        "@asas-ratelimit/v0.11.0#subdirectory=packages/asas-ratelimit"
     )
 
 
