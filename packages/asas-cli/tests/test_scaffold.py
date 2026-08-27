@@ -77,6 +77,18 @@ def test_pyproject_toml_pins_selected_packages_each_at_its_own_tag(tmp_path):
     assert "asas-ratelimit/v0.11.0" not in deps
 
 
+def test_pyproject_toml_declares_py_modules_so_pip_install_e_works(tmp_path):
+    # Regression: a flat main.py + settings.py layout with no [tool.setuptools]
+    # py-modules makes setuptools' auto-discovery refuse to guess which of the
+    # two top-level modules is "the" package — `pip install -e .` fails
+    # outright with "Multiple top-level modules discovered in a flat-layout".
+    project_dir = tmp_path / "demo"
+    scaffold(project_dir, "demo", ["ratelimit"], versions=_versions_for("ratelimit"))
+    text = (project_dir / "pyproject.toml").read_text()
+    doc = tomlkit.parse(text)
+    assert doc["tool"]["setuptools"]["py-modules"] == ["main", "settings"]
+
+
 def test_settings_py_includes_ratelimit_fields_only_when_selected(tmp_path):
     with_rl = tmp_path / "with_rl"
     without_rl = tmp_path / "without_rl"

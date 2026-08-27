@@ -137,6 +137,12 @@ dependencies = [
 {deps_block},
 ]
 
+# Flat main.py + settings.py, not a package — without this, setuptools'
+# auto-discovery sees two top-level modules and refuses to guess which one
+# is "the" package, and `pip install -e .` fails outright.
+[tool.setuptools]
+py-modules = ["main", "settings"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 '''
