@@ -10,6 +10,60 @@ asas new myservice --with lookups,access  # scaffold a new project wired for a s
 asas list                                 # see every known package + its variant
 ```
 
+## Installing
+
+### Once this is merged and tagged
+
+Pin `asas-cli` itself the same way you'd pin any other Asas package (see the
+repo README's "Consuming" section) — a normal `git+https://...#subdirectory=
+packages/asas-cli` line, or globally with `pipx`:
+
+```bash
+pipx install "asas-cli @ git+https://github.com/wlootah-a11y/asas.git@<tag>#subdirectory=packages/asas-cli"
+```
+
+### Right now — trying it locally, before it's published
+
+`asas-cli` isn't reachable via a git URL until this merges to `main` and a
+new tag is cut. Until then, install it straight from your clone:
+
+```bash
+git clone https://github.com/wlootah-a11y/asas.git   # or `git pull` if you already have it
+cd asas
+git checkout add-dev-entry-point                      # this branch, until it's merged
+
+python3 --version   # needs >= 3.11 — every Asas package requires it. If this
+                     # prints something older, point the next line at a newer
+                     # interpreter you have (`python3.12 -m venv .venv`, etc.)
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip   # editable installs need pip >= 21.3
+                                       # (PEP 660) — an older pip fails with
+                                       # "editable mode currently requires a
+                                       # setuptools-based build"
+pip install -e 'packages/asas-cli[dev]'
+
+asas --help
+asas list
+```
+
+**`asas add`/`asas new` still work fully today** — only `asas-cli` itself is
+local-only pre-merge. Every *other* package (`lookups`, `ratelimit`, …) is
+already tagged and published on GitHub, so a real end-to-end smoke test
+works right now:
+
+```bash
+asas new /tmp/asas-smoke-test --with ratelimit,lookups --dir /tmp
+cd /tmp/asas-smoke-test && pip install -e '.[dev]'
+```
+
+Running the CLI's own test suite:
+
+```bash
+cd packages/asas-cli
+pytest -q
+```
+
 ## `asas add <package>`
 
 Writes the correct `git+https://...#subdirectory=...` line into your
